@@ -6,7 +6,7 @@ The idea for this fork came about when I learned of the Four Keys project from t
 If you're interested in collecting and visualizing your organization's four key metrics, but you don't have access to GCP then this may be a good project for you.
 
 
-# -/-/-/-/-/-/-/-/-/-/-/- Content Below is from Original Repo -/-/-/-/-/-/-/-/-/-/-/-
+# -/-/-/-/-/-/-/- Content Below is from Original Repo -/-/-/-/-/-/-/-
 
 ![Four Keys](images/fourkeys_wide.svg)
 
