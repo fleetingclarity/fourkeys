@@ -16,10 +16,6 @@ import hmac
 from hashlib import sha1, sha256
 import os
 
-from google.cloud import secretmanager
-
-PROJECT_NAME = os.environ.get("PROJECT_NAME")
-
 
 class EventSource(object):
     """
@@ -39,9 +35,9 @@ def github_verification(signature, body):
     expected_signature = "sha1="
     try:
         # Get secret from Cloud Secret Manager
-        secret = get_secret(PROJECT_NAME, "event-handler", "latest")
+        secret = get_secret("GITHUB_SECRET")
         # Compute the hashed signature
-        hashed = hmac.new(secret, body, sha1)
+        hashed = hmac.new(secret.encode(), body, 'sha1')
         expected_signature += hashed.hexdigest()
 
     except Exception as e:
@@ -58,7 +54,7 @@ def circleci_verification(signature, body):
     expected_signature = "v1="
     try:
         # Get secret from Cloud Secret Manager
-        secret = get_secret(PROJECT_NAME, "event-handler", "latest")
+        secret = get_secret("CIRCLECI_SECRET")
         # Compute the hashed signature
         hashed = hmac.new(secret, body, 'sha256')
         expected_signature += hashed.hexdigest()
@@ -84,11 +80,10 @@ def pagerduty_verification(signatures, body):
 
     expected_signature = "v1="
     try:
-        # Get secret from Cloud Secret Manager
-        secret = get_secret(PROJECT_NAME, "pager_duty_secret", "latest")
+        secret = get_secret("PAGER_DUTY_SECRET")
 
         # Compute the hashed signature
-        hashed = hmac.new(secret, body, sha256)
+        hashed = hmac.new(secret, body, 'sha256')
         expected_signature += hashed.hexdigest()
 
     except Exception as e:
@@ -106,24 +101,20 @@ def simple_token_verification(token, body):
     """
     if not token:
         raise Exception("Token is empty")
-    secret = get_secret(PROJECT_NAME, "event-handler", "latest")
+    secret = os.environ.get('FK_TOKEN')
 
-    return secret.decode() == token
+    return secret == token
 
 
-def get_secret(project_name, secret_name, version_num):
+def get_secret(secret_name):
     """
     Returns secret payload from Cloud Secret Manager
     """
-    try:
-        client = secretmanager.SecretManagerServiceClient()
-        name = client.secret_version_path(
-            project_name, secret_name, version_num
-        )
-        secret = client.access_secret_version(name)
-        return secret.payload.data
-    except Exception as e:
-        print(e)
+    computed_name = f'FK_{secret_name}'
+    secret = os.environ.get(computed_name)
+    if secret is None:
+        raise Exception(f'Unable to find secret for {computed_name}')
+    return secret
 
 
 def get_source(headers):

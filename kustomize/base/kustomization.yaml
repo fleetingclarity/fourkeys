@@ -1,0 +1,4 @@
+namespace: four-keys
+resources:
+  - namespace.yml
+  - fk-event-handler.yml

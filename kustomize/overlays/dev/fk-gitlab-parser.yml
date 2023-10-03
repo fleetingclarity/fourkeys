@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fk-gitlab-parser
+  namespace: four-keys
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fk-gitlab-parser
+  template:
+    metadata:
+      labels:
+        app: fk-gitlab-parser
+    spec:
+      containers:
+      - name: fk-gitlab-parser
+        imagePullPolicy: Never
+        image: fk-gitlab-parser:latest
+        env:
+        - name: FK_BROKER_ADDRESS
+          value: rabbit.four-keys.svc.cluster.local
+        - name: FK_DB_HOST
+          value: db.four-keys.svc.cluster.local
+        - name: FK_DB_PW
+          value: fourkeys
+        - name: FK_DB_USER
+          value: fourkeys

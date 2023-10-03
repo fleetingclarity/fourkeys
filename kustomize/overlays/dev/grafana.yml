@@ -1,0 +1,76 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: four-keys
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 3000
+    targetPort: 3000
+  selector:
+    app: grafana
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: four-keys
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+      - name: grafana
+        image: grafana/grafana
+        env:
+        - name: FK_DB_USER
+          value: fourkeys
+        - name: FK_DB_PASSWORD
+          value: fourkeys
+        - name: GF_AUTH_DISABLE_LOGIN_FORM
+          value: "true"
+        - name: GF_AUTH_ANONYMOUS_ENABLED
+          value: "true"
+        - name: GF_AUTH_ANONYMOUS_ORG_ROLE
+          value: "Admin"
+        volumeMounts:
+        - name: config
+          mountPath: /etc/grafana/
+        - name: dashboard-json
+          mountPath: /etc/grafana/dashboards/
+        - name: dashboard-yaml
+          mountPath: /etc/grafana/provisioning/dashboards/
+        - name: datasource-yaml
+          mountPath: /etc/grafana/provisioning/datasources/
+      volumes:
+      - name: config
+        configMap:
+          name: grafana-config
+          items:
+            - key: grafana.ini
+              path: grafana.ini
+      - name: dashboard-json
+        configMap:
+          name: grafana-config
+          items:
+            - key: fourkeys_dashboard.json
+              path: fourkeys_dashboard.json
+      - name: dashboard-yaml
+        configMap:
+          name: grafana-config
+          items:
+            - key: dashboards.yaml
+              path: dashboards.yaml
+      - name: datasource-yaml
+        configMap:
+          name: grafana-config
+          items:
+            - key: datasource.yaml
+              path: datasource.yaml

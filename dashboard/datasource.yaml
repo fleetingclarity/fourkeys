@@ -1,4 +1,4 @@
-# Copyright 2020 Google LLC
+# Copyright 2023 fleetingclarity <72276886+fleetingclarity@users.noreply.github.com>
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,15 +15,14 @@
 apiVersion: 1
 
 datasources:
-- name: Google BigQuery
-  type: grafana-bigquery-datasource
+- name: four-keys-mariadb
+  type: mysql
   access: proxy
-  isDefault: true
-  basicAuth: false
-  withCredentials: false
   jsonData:
-       authenticationType: gce
-       queryPriority: INTERACTIVE
-       processingLocation: $BQ_REGION
+    database: four_keys          # specify your database name here
+  user: "$FK_DB_USER"            # using environment variable for username
+  secureJsonData:
+    password: "$FK_DB_PASSWORD"  # using environment variable for password
+  url: "db:3306"                 # specify your MariaDB host and port, default is docker-compose mariadb service
   version: 3
   readOnly: false

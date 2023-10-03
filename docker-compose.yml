@@ -1,0 +1,56 @@
+# This compose file is used to simplify local development. For deploying to kubernetes
+# please see the examples in the base/ directory.
+version: "3.9"
+services:
+  rabbit:
+    image: rabbitmq:3-management
+    hostname: rmq
+    container_name: fk-rabbit-server
+    ports:
+      # management server
+      - "15672:15672"
+      # ?
+      - "5672:5672"
+  db:
+    container_name: fk-database
+    image: mariadb
+    environment:
+      MARIADB_ROOT_PASSWORD: rooter
+      MARIADB_DATABASE: four_keys
+      MARIADB_USER: fourkeys
+      MARIADB_PASSWORD: fourkeys
+    volumes:
+      - ./data-generator/tools/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    ports:
+      - "3306:3306"
+  handler:
+    container_name: fk-event-handler
+    build:
+      context: event-handler
+    environment:
+      FK_BROKER_ADDRESS: rabbit
+      FK_TOKEN: changeme
+      FK_GITHUB_SECRET: changme
+      PORT: 8080
+    ports:
+      - "8000:8080"
+  gitlab-parser:
+    container_name: fk-gitlab-parser
+    build:
+      context: workers/gitlab-parser
+    environment:
+      FK_BROKER_ADDRESS: rabbit
+      FK_DB_HOST: db
+      FK_DB_PW: fourkeys
+      FK_DB_USER: fourkeys
+    volumes:
+      - ./shared:/app/shared
+  grafana:
+    container_name: fk-grafana
+    build:
+      context: dashboard
+    environment:
+      FK_DB_USER: fourkeys
+      FK_DB_PASSWORD: fourkeys
+    ports:
+      - "3000:3000"

@@ -1,0 +1,967 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-config
+  namespace: four-keys
+data:
+  grafana.ini: |
+    [live]
+    allowed_origins = "https://*"
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: Four Keys
+        type: file
+        updateIntervalSeconds: 100
+        allowUiUpdates: true
+        options:
+          path: /etc/grafana/dashboards
+  datasource.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: four-keys-mariadb
+        type: mysql
+        access: proxy
+        jsonData:
+          database: four_keys          # specify your database name here
+        user: "$FK_DB_USER"            # using environment variable for username
+        secureJsonData:
+          password: "$FK_DB_PASSWORD"  # using environment variable for password
+        url: "db.four-keys.svc.cluster.local:$DB_SERVICE_PORT"                 # specify your MariaDB host and port
+        version: 3
+        readOnly: false
+  fourkeys_dashboard.json: |
+    {
+      "annotations": {
+      "list": [
+        {
+          "builtIn": 1,
+          "datasource": {
+            "type": "datasource",
+            "uid": "grafana"
+          },
+          "enable": true,
+          "hide": true,
+          "iconColor": "rgba(0, 211, 255, 1)",
+          "name": "Annotations & Alerts",
+          "target": {
+            "limit": 100,
+            "matchAny": false,
+            "tags": [],
+            "type": "dashboard"
+          },
+          "type": "dashboard"
+        }
+      ]
+    },
+    "editable": true,
+    "fiscalYearStartMonth": 0,
+    "graphTooltip": 2,
+    "id": 1,
+    "links": [],
+    "liveNow": false,
+    "panels": [
+      {
+        "datasource": {
+          "type": "four-keys-mariadb",
+          "uid": "P900178F5D82CFA7C"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "axisCenteredZero": false,
+              "axisColorMode": "text",
+              "axisLabel": "Hours",
+              "axisPlacement": "auto",
+              "barAlignment": 0,
+              "drawStyle": "line",
+              "fillOpacity": 0,
+              "gradientMode": "none",
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "viz": false
+              },
+              "lineInterpolation": "linear",
+              "lineWidth": 1,
+              "pointSize": 5,
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "showPoints": "auto",
+              "spanNulls": false,
+              "stacking": {
+                "group": "A",
+                "mode": "none"
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "red",
+                  "value": 80
+                }
+              ]
+            }
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 10,
+          "w": 9,
+          "x": 0,
+          "y": 0
+        },
+        "id": 2,
+        "options": {
+          "legend": {
+            "calcs": [],
+            "displayMode": "list",
+            "placement": "bottom",
+            "showLegend": true
+          },
+          "tooltip": {
+            "mode": "single",
+            "sort": "none"
+          }
+        },
+        "targets": [
+          {
+            "datasource": {
+              "type": "four-keys-mariadb",
+              "uid": "P900178F5D82CFA7C"
+            },
+            "editorMode": "code",
+            "format": "time_series",
+            "location": "US",
+            "project": "gglobo-deployment-frq-hdg-prd",
+            "rawQuery": true,
+            "rawSql": "SELECT\n    CAST(day AS DATETIME) as time,\n    IFNULL(AVG(time_diff)/60, 0) AS median_time_to_change\nFROM (\n    SELECT\n        d.time_created AS day,\n        d.deploy_id,\n        IF(\n            TIMESTAMPDIFF(MINUTE, c.time_created, d.time_created) > 0, \n            TIMESTAMPDIFF(MINUTE, c.time_created, d.time_created), \n            NULL\n        ) AS time_diff,\n        ROW_NUMBER() OVER(PARTITION BY DATE(d.time_created) ORDER BY TIMESTAMPDIFF(MINUTE, c.time_created, d.time_created)) AS rn_asc,\n        ROW_NUMBER() OVER(PARTITION BY DATE(d.time_created) ORDER BY TIMESTAMPDIFF(MINUTE, c.time_created, d.time_created) DESC) AS rn_desc,\n        COUNT(*) OVER(PARTITION BY DATE(d.time_created)) AS cnt\n    FROM deployments d\n    LEFT JOIN changes c ON d.main_commit = c.change_id\n) AS subquery\nWHERE rn_asc BETWEEN cnt/2 AND cnt/2 + 1 OR rn_desc BETWEEN cnt/2 AND cnt/2 + 1\nGROUP BY day\nORDER BY day;\n",
+            "refId": "A",
+            "sql": {
+              "columns": [
+                {
+                  "parameters": [],
+                  "type": "function"
+                }
+              ],
+              "groupBy": [
+                {
+                  "property": {
+                    "type": "string"
+                  },
+                  "type": "groupBy"
+                }
+              ],
+              "limit": 50
+            }
+          }
+        ],
+        "title": "Lead Time for Changes",
+        "type": "timeseries"
+      },
+      {
+        "datasource": {
+          "type": "four-keys-mariadb",
+          "uid": "P900178F5D82CFA7C"
+        },
+        "description": "",
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "mappings": [
+              {
+                "options": {
+                  "One day": {
+                    "color": "purple",
+                    "index": 0
+                  },
+                  "One month": {
+                    "color": "yellow",
+                    "index": 2
+                  },
+                  "One week": {
+                    "color": "green",
+                    "index": 1
+                  },
+                  "One year": {
+                    "color": "red",
+                    "index": 4
+                  },
+                  "Six months": {
+                    "color": "red",
+                    "index": 3
+                  }
+                },
+                "type": "value"
+              }
+            ],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                }
+              ]
+            }
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 5,
+          "w": 4,
+          "x": 9,
+          "y": 0
+        },
+        "id": 5,
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "justifyMode": "auto",
+          "orientation": "auto",
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "/^lead_time_to_change$/",
+            "values": false
+          },
+          "textMode": "auto"
+        },
+        "pluginVersion": "9.3.1",
+        "targets": [
+          {
+            "datasource": {
+              "type": "four-keys-mariadb",
+              "uid": "P900178F5D82CFA7C"
+            },
+            "editorMode": "code",
+            "format": "table",
+            "location": "US",
+            "project": "gglobo-deployment-frq-hdg-prd",
+            "rawQuery": true,
+            "rawSql": "SELECT \n CASE\n  WHEN median_time_to_change < 24 * 60 THEN 'One day'\n  WHEN median_time_to_change < 168 * 60 THEN 'One week'\n  WHEN median_time_to_change < 730 * 60 THEN 'One month'\n  WHEN median_time_to_change < 730 * 6 * 60 THEN 'Six months'\n  ELSE 'One year'\n END AS lead_time_to_change\nFROM (\n SELECT\n  IFNULL(AVG(diff_minutes), 0) AS median_time_to_change\n FROM (\n   SELECT\n   TIMESTAMPDIFF(MINUTE, c.time_created, d.time_created) AS diff_minutes,\n   IF(@rownum:=@rownum+1, @rownum, @rownum) AS row_num\n   FROM deployments d\n   LEFT JOIN changes c ON d.main_commit = c.change_id\n   CROSS JOIN (SELECT @rownum:=0) r\n   WHERE d.time_created > DATE_SUB(CURRENT_DATE, INTERVAL 3 MONTH)\n   ORDER BY diff_minutes\n ) AS diffs\n WHERE row_num BETWEEN FLOOR((@rownum+1)/2) AND CEIL((@rownum+1)/2)\n) AS subquery;\n",
+            "refId": "A",
+            "sql": {
+              "columns": [
+                {
+                  "parameters": [],
+                  "type": "function"
+                }
+              ],
+              "groupBy": [
+                {
+                  "property": {
+                    "type": "string"
+                  },
+                  "type": "groupBy"
+                }
+              ],
+              "limit": 50
+            }
+          }
+        ],
+        "title": "Lead Time to Change Bucket",
+        "type": "stat"
+      },
+      {
+        "datasource": {
+          "type": "four-keys-mariadb",
+          "uid": "P900178F5D82CFA7C"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "axisCenteredZero": false,
+              "axisColorMode": "text",
+              "axisPlacement": "auto",
+              "barAlignment": 0,
+              "drawStyle": "bars",
+              "fillOpacity": 50,
+              "gradientMode": "none",
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "viz": false
+              },
+              "lineInterpolation": "linear",
+              "lineWidth": 1,
+              "pointSize": 5,
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "showPoints": "auto",
+              "spanNulls": false,
+              "stacking": {
+                "group": "A",
+                "mode": "none"
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            },
+            "mappings": [],
+            "min": 0,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "red",
+                  "value": 80
+                }
+              ]
+            }
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 10,
+          "w": 9,
+          "x": 13,
+          "y": 0
+        },
+        "id": 9,
+        "options": {
+          "legend": {
+            "calcs": [],
+            "displayMode": "list",
+            "placement": "bottom",
+            "showLegend": true
+          },
+          "tooltip": {
+            "mode": "single",
+            "sort": "none"
+          }
+        },
+        "targets": [
+          {
+            "datasource": {
+              "type": "four-keys-mariadb",
+              "uid": "P900178F5D82CFA7C"
+            },
+            "editorMode": "code",
+            "format": "time_series",
+            "location": "US",
+            "project": "gglobo-deployment-frq-hdg-prd",
+            "rawQuery": true,
+            "rawSql": "SELECT\nDATE(time_created) AS time,\nCOUNT(DISTINCT deploy_id) AS deployments\nFROM deployments\nGROUP BY time\nORDER BY time;",
+            "refId": "A",
+            "sql": {
+              "columns": [
+                {
+                  "parameters": [],
+                  "type": "function"
+                }
+              ],
+              "groupBy": [
+                {
+                  "property": {
+                    "type": "string"
+                  },
+                  "type": "groupBy"
+                }
+              ],
+              "limit": 50
+            }
+          }
+        ],
+        "title": "Daily Deployments",
+        "type": "timeseries"
+      },
+      {
+        "datasource": {
+          "type": "four-keys-mariadb",
+          "uid": "P900178F5D82CFA7C"
+        },
+        "description": "",
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "mappings": [
+              {
+                "options": {
+                  "Daily": {
+                    "color": "purple",
+                    "index": 0,
+                    "text": "Elite Performance"
+                  },
+                  "Monthly": {
+                    "color": "yellow",
+                    "index": 2
+                  },
+                  "Weekly": {
+                    "color": "green",
+                    "index": 1
+                  },
+                  "Yearly": {
+                    "color": "red",
+                    "index": 3
+                  }
+                },
+                "type": "value"
+              }
+            ],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                }
+              ]
+            }
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 5,
+          "w": 4,
+          "x": 9,
+          "y": 5
+        },
+        "id": 6,
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "justifyMode": "auto",
+          "orientation": "auto",
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "/^deployment_frequency$/",
+            "values": false
+          },
+          "textMode": "auto"
+        },
+        "pluginVersion": "9.3.1",
+        "targets": [
+          {
+            "datasource": {
+              "type": "four-keys-mariadb",
+              "uid": "P900178F5D82CFA7C"
+            },
+            "editorMode": "code",
+            "format": "table",
+            "location": "US",
+            "project": "gglobo-deployment-frq-hdg-prd",
+            "rawQuery": true,
+            "rawSql": "WITH RECURSIVE last_three_months AS (\n    SELECT DATE_SUB(CURRENT_DATE, INTERVAL 3 MONTH) AS day\n    UNION ALL\n    SELECT DATE_ADD(day, INTERVAL 1 DAY)\n    FROM last_three_months\n    WHERE day < CURRENT_DATE AND day > (SELECT DATE(MIN(time_created)) FROM events_raw)\n),\n\ndeployments_per_day AS (\n    SELECT DATE(time_created) AS deploy_day, COUNT(DISTINCT deploy_id) AS daily_deploys\n    FROM deployments\n    GROUP BY deploy_day\n),\n\ndeployments_per_week AS (\n    SELECT WEEK(last_three_months.day) AS week, SUM(daily_deploys) > 0 AS week_deployed, COUNT(DISTINCT last_three_months.day) AS days_deployed\n    FROM last_three_months\n    LEFT JOIN deployments_per_day ON deployments_per_day.deploy_day = last_three_months.day\n    GROUP BY week\n),\n\nmedian_calc AS (\n    SELECT days_deployed, week_deployed,\n           ROW_NUMBER() OVER (ORDER BY days_deployed) AS rn_days,\n           ROW_NUMBER() OVER (ORDER BY week_deployed) AS rn_weeks,\n           COUNT(*) OVER () AS cnt\n    FROM deployments_per_week\n)\n\nSELECT\n    CASE \n        WHEN AVG(days_deployed) OVER (PARTITION BY CASE WHEN rn_days BETWEEN cnt/2 AND cnt/2 + 1 THEN 1 ELSE 0 END) >= 3 THEN 'Daily'\n        WHEN AVG(week_deployed) OVER (PARTITION BY CASE WHEN rn_weeks BETWEEN cnt/2 AND cnt/2 + 1 THEN 1 ELSE 0 END) >= 1 THEN 'Weekly'\n        ELSE 'Yearly'\n    END AS deployment_frequency\nFROM median_calc\nLIMIT 1;\n",
+            "refId": "A",
+            "sql": {
+              "columns": [
+                {
+                  "parameters": [],
+                  "type": "function"
+                }
+              ],
+              "groupBy": [
+                {
+                  "property": {
+                    "type": "string"
+                  },
+                  "type": "groupBy"
+                }
+              ],
+              "limit": 50
+            }
+          }
+        ],
+        "title": "Deployment Frequency",
+        "type": "stat"
+      },
+      {
+        "datasource": {
+          "type": "four-keys-mariadb",
+          "uid": "P900178F5D82CFA7C"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "axisCenteredZero": false,
+              "axisColorMode": "text",
+              "axisLabel": "Hours",
+              "axisPlacement": "auto",
+              "barAlignment": 0,
+              "drawStyle": "line",
+              "fillOpacity": 0,
+              "gradientMode": "none",
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "viz": false
+              },
+              "lineInterpolation": "linear",
+              "lineWidth": 1,
+              "pointSize": 5,
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "showPoints": "auto",
+              "spanNulls": false,
+              "stacking": {
+                "group": "A",
+                "mode": "none"
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "red",
+                  "value": 80
+                }
+              ]
+            }
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 10,
+          "w": 9,
+          "x": 0,
+          "y": 10
+        },
+        "id": 3,
+        "options": {
+          "legend": {
+            "calcs": [],
+            "displayMode": "list",
+            "placement": "bottom",
+            "showLegend": true
+          },
+          "tooltip": {
+            "mode": "single",
+            "sort": "none"
+          }
+        },
+        "targets": [
+          {
+            "datasource": {
+              "type": "four-keys-mariadb",
+              "uid": "P900178F5D82CFA7C"
+            },
+            "editorMode": "code",
+            "format": "time_series",
+            "location": "US",
+            "project": "gglobo-deployment-frq-hdg-prd",
+            "rawQuery": true,
+            "rawSql": "WITH incidents_sorted AS (\n    SELECT \n        DATE(time_created) AS day,\n        TIMESTAMPDIFF(HOUR, time_created, time_resolved) AS hours_to_restore,\n        ROW_NUMBER() OVER (PARTITION BY DATE(time_created) ORDER BY TIMESTAMPDIFF(HOUR, time_created, time_resolved)) AS rn_asc,\n        ROW_NUMBER() OVER (PARTITION BY DATE(time_created) ORDER BY TIMESTAMPDIFF(HOUR, time_created, time_resolved) DESC) AS rn_desc,\n        COUNT(*) OVER (PARTITION BY DATE(time_created)) AS cnt\n    FROM incidents\n    WHERE time_resolved IS NOT NULL\n)\n\nSELECT \n    day as time,\n    CASE \n        WHEN cnt % 2 = 1 THEN \n            AVG(hours_to_restore) OVER (PARTITION BY day, CASE WHEN rn_asc = rn_desc THEN 1 ELSE 0 END)\n        ELSE \n            (AVG(hours_to_restore) OVER (PARTITION BY day, CASE WHEN rn_asc = rn_desc THEN 1 ELSE 0 END) +\n             AVG(hours_to_restore) OVER (PARTITION BY day, CASE WHEN rn_asc = rn_desc - 1 THEN 1 ELSE 0 END)) / 2\n    END AS daily_med_time_to_restore\nFROM incidents_sorted\nORDER BY time;",
+            "refId": "A",
+            "sql": {
+              "columns": [
+                {
+                  "parameters": [],
+                  "type": "function"
+                }
+              ],
+              "groupBy": [
+                {
+                  "property": {
+                    "type": "string"
+                  },
+                  "type": "groupBy"
+                }
+              ],
+              "limit": 50
+            }
+          }
+        ],
+        "title": "Daily Median Time to Restore Services",
+        "type": "timeseries"
+      },
+      {
+        "datasource": {
+          "type": "four-keys-mariadb",
+          "uid": "P900178F5D82CFA7C"
+        },
+        "description": "",
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "mappings": [
+              {
+                "options": {
+                  "One day": {
+                    "color": "green",
+                    "index": 0
+                  },
+                  "One month": {
+                    "color": "red",
+                    "index": 2
+                  },
+                  "One week": {
+                    "color": "yellow",
+                    "index": 1
+                  },
+                  "One year": {
+                    "color": "red",
+                    "index": 4
+                  },
+                  "Six months": {
+                    "color": "red",
+                    "index": 3
+                  }
+                },
+                "type": "value"
+              }
+            ],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                }
+              ]
+            }
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 5,
+          "w": 4,
+          "x": 9,
+          "y": 10
+        },
+        "id": 7,
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "justifyMode": "auto",
+          "orientation": "auto",
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "/^med_time_to_resolve$/",
+            "values": false
+          },
+          "textMode": "auto"
+        },
+        "pluginVersion": "9.3.1",
+        "targets": [
+          {
+            "datasource": {
+              "type": "four-keys-mariadb",
+              "uid": "P900178F5D82CFA7C"
+            },
+            "editorMode": "code",
+            "format": "table",
+            "location": "US",
+            "project": "gglobo-deployment-frq-hdg-prd",
+            "rawQuery": true,
+            "rawSql": "WITH incidents_sorted AS (\n    SELECT \n        TIMESTAMPDIFF(HOUR, time_created, time_resolved) AS hours_to_resolve,\n        ROW_NUMBER() OVER (ORDER BY TIMESTAMPDIFF(HOUR, time_created, time_resolved)) AS rn_asc,\n        ROW_NUMBER() OVER (ORDER BY TIMESTAMPDIFF(HOUR, time_created, time_resolved) DESC) AS rn_desc,\n        COUNT(*) OVER () AS cnt\n    FROM incidents\n    WHERE time_resolved IS NOT NULL\n    AND time_created > DATE_SUB(CURRENT_DATE, INTERVAL 3 MONTH)\n)\n\n, median_calc AS (\n    SELECT \n        CASE \n            WHEN cnt % 2 = 1 THEN \n                AVG(hours_to_resolve) OVER (PARTITION BY CASE WHEN rn_asc = rn_desc THEN 1 ELSE 0 END)\n            ELSE \n                (AVG(hours_to_resolve) OVER (PARTITION BY CASE WHEN rn_asc = rn_desc THEN 1 ELSE 0 END) +\n                AVG(hours_to_resolve) OVER (PARTITION BY CASE WHEN rn_asc = rn_desc - 1 THEN 1 ELSE 0 END)) / 2\n        END AS med_time_to_resolve\n    FROM incidents_sorted\n)\n\nSELECT \n    CASE \n        WHEN med_time_to_resolve < 24 THEN \"One day\"\n        WHEN med_time_to_resolve < 168 THEN \"One week\"\n        WHEN med_time_to_resolve < 730 THEN \"One month\"\n        WHEN med_time_to_resolve < 730 * 6 THEN \"Six months\"\n        ELSE \"One year\"\n    END AS med_time_to_resolve\nFROM median_calc\nLIMIT 1;\n",
+            "refId": "A",
+            "sql": {
+              "columns": [
+                {
+                  "parameters": [],
+                  "type": "function"
+                }
+              ],
+              "groupBy": [
+                {
+                  "property": {
+                    "type": "string"
+                  },
+                  "type": "groupBy"
+                }
+              ],
+              "limit": 50
+            }
+          }
+        ],
+        "title": "Median Time to Restore Services",
+        "type": "stat"
+      },
+      {
+        "datasource": {
+          "type": "four-keys-mariadb",
+          "uid": "P900178F5D82CFA7C"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "axisCenteredZero": false,
+              "axisColorMode": "text",
+              "axisPlacement": "auto",
+              "barAlignment": 0,
+              "drawStyle": "line",
+              "fillOpacity": 0,
+              "gradientMode": "none",
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "viz": false
+              },
+              "lineInterpolation": "linear",
+              "lineWidth": 1,
+              "pointSize": 5,
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "showPoints": "auto",
+              "spanNulls": false,
+              "stacking": {
+                "group": "A",
+                "mode": "none"
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "red",
+                  "value": 80
+                }
+              ]
+            }
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 10,
+          "w": 9,
+          "x": 13,
+          "y": 10
+        },
+        "id": 10,
+        "options": {
+          "legend": {
+            "calcs": [],
+            "displayMode": "list",
+            "placement": "bottom",
+            "showLegend": true
+          },
+          "tooltip": {
+            "mode": "single",
+            "sort": "none"
+          }
+        },
+        "targets": [
+          {
+            "datasource": {
+              "type": "four-keys-mariadb",
+              "uid": "P900178F5D82CFA7C"
+            },
+            "editorMode": "code",
+            "format": "time_series",
+            "location": "US",
+            "project": "gglobo-deployment-frq-hdg-prd",
+            "rawQuery": true,
+            "rawSql": "SELECT\n    DATE(d.time_created) as time,\n    IF(COUNT(DISTINCT ch.change_id) = 0, 0, \n       SUM(IF(i.incident_id IS NULL, 0, 1)) / COUNT(DISTINCT d.deploy_id)) as change_fail_rate\nFROM deployments d\nLEFT JOIN changes ch ON d.main_commit = ch.change_id\nLEFT JOIN incidents i ON ch.change_id = JSON_UNQUOTE(JSON_EXTRACT(i.changes, '$[0]'))\nGROUP BY time\nORDER BY time;",
+            "refId": "A",
+            "sql": {
+              "columns": [
+                {
+                  "parameters": [],
+                  "type": "function"
+                }
+              ],
+              "groupBy": [
+                {
+                  "property": {
+                    "type": "string"
+                  },
+                  "type": "groupBy"
+                }
+              ],
+              "limit": 50
+            }
+          }
+        ],
+        "title": "Daily Change Failure Rate",
+        "type": "timeseries"
+      },
+      {
+        "datasource": {
+          "type": "four-keys-mariadb",
+          "uid": "P900178F5D82CFA7C"
+        },
+        "description": "",
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "mappings": [
+              {
+                "options": {
+                  "0-15%": {
+                    "color": "green",
+                    "index": 0
+                  },
+                  "16-45%": {
+                    "color": "yellow",
+                    "index": 1
+                  },
+                  "46-60%": {
+                    "color": "red",
+                    "index": 2
+                  }
+                },
+                "type": "value"
+              }
+            ],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                }
+              ]
+            }
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 5,
+          "w": 4,
+          "x": 9,
+          "y": 15
+        },
+        "id": 8,
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "justifyMode": "auto",
+          "orientation": "auto",
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "/^change_fail_rate$/",
+            "values": false
+          },
+          "textMode": "auto"
+        },
+        "pluginVersion": "9.3.1",
+        "targets": [
+          {
+            "datasource": {
+              "type": "four-keys-mariadb",
+              "uid": "P900178F5D82CFA7C"
+            },
+            "editorMode": "code",
+            "format": "table",
+            "location": "US",
+            "project": "gglobo-deployment-frq-hdg-prd",
+            "rawQuery": true,
+            "rawSql": "SELECT\n    CASE \n        WHEN change_fail_rate <= 0.15 THEN \"0-15%\"\n        WHEN change_fail_rate < 0.46 THEN \"16-45%\"\n        ELSE \"46-60%\" \n    END AS change_fail_rate\nFROM \n(\n    SELECT\n        IF(COUNT(DISTINCT ch.change_id) = 0, 0, \n           SUM(IF(i.incident_id IS NULL, 0, 1)) / COUNT(DISTINCT d.deploy_id)) AS change_fail_rate\n    FROM deployments d\n    LEFT JOIN changes ch ON d.main_commit = ch.change_id\n    LEFT JOIN incidents i ON ch.change_id = JSON_UNQUOTE(JSON_EXTRACT(i.changes, '$[0]'))\n    WHERE d.time_created > DATE_SUB(CURRENT_DATE, INTERVAL 3 MONTH)\n) AS subquery\nLIMIT 1;\n",
+            "refId": "A",
+            "sql": {
+              "columns": [
+                {
+                  "parameters": [],
+                  "type": "function"
+                }
+              ],
+              "groupBy": [
+                {
+                  "property": {
+                    "type": "string"
+                  },
+                  "type": "groupBy"
+                }
+              ],
+              "limit": 50
+            }
+          }
+        ],
+        "title": "Change Failure Rate",
+        "type": "stat"
+      }
+    ],
+    "refresh": "",
+    "schemaVersion": 37,
+    "style": "dark",
+    "tags": [],
+    "templating": {
+      "list": []
+    },
+    "time": {
+      "from": "2022-08-01T03:00:00.000Z",
+      "to": "now"
+    },
+    "timepicker": {
+      "hidden": false,
+      "refresh_intervals": [
+        "5s",
+        "10s",
+        "30s",
+        "1m",
+        "5m",
+        "15m",
+        "30m",
+        "1h",
+        "2h",
+        "1d"
+      ],
+      "time_options": [
+        "5m",
+        "15m",
+        "1h",
+        "6h",
+        "12h",
+        "24h",
+        "2d",
+        "7d",
+        "30d"
+      ],
+      "type": "timepicker"
+    },
+    "timezone": "utc",
+    "title": "Four Keys",
+    "uid": "yVtwoQ4nk",
+    "version": 2,
+    "weekStart": "" }

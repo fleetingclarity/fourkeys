@@ -15,22 +15,30 @@
 import json
 import os
 import sys
+import random
+from datetime import datetime
 
 from flask import abort, Flask, request
-from google.cloud import pubsub_v1
+from snowflake import SnowflakeGenerator
+import pika
 
 import sources
 
-PROJECT_NAME = os.environ.get("PROJECT_NAME")
+# it's ok for multiple nodes to use the same machine_id but a bit of randomness should help avoid collisions
+machine_id = random.randint(0, 1023)
+generator = SnowflakeGenerator(machine_id)
+
+BROKER_ADDRESS = os.environ.get("FK_BROKER_ADDRESS")
 
 app = Flask(__name__)
+print(f'Starting event_handler node with machine_id {machine_id}')
 
 
 @app.route("/", methods=["GET", "POST"])
 def index():
     """
     Receives event data from a webhook, checks if the source is authorized,
-    checks if the signature is verified, and then sends the data to Pub/Sub.
+    checks if the signature is verified, and then sends the data to the broker.
     """
 
     # Check if the source is authorized
@@ -53,43 +61,50 @@ def index():
     if not verify_signature(signature, body):
         abort(403, "Signature does not match expected signature")
 
-    # Remove the Auth header so we do not publish it to Pub/Sub
+    # Remove the Auth header so we do not publish it
     pubsub_headers = dict(request.headers)
     if "Authorization" in pubsub_headers:
         del pubsub_headers["Authorization"]
 
     # Publish to Pub/Sub
-    publish_to_pubsub(source, body, pubsub_headers)
+    publish_to_broker(source, body, pubsub_headers)
 
     # Flush the stdout to avoid log buffering.
     sys.stdout.flush()
     return "", 204
 
 
-def publish_to_pubsub(source, msg, headers):
+def publish_to_broker(source, msg, headers):
     """
-    Publishes the message to Cloud Pub/Sub
+    Publishes the message to the message broker
     """
     try:
-        publisher = pubsub_v1.PublisherClient()
-        topic_path = publisher.topic_path(PROJECT_NAME, source)
-        print(topic_path)
+        connection = pika.BlockingConnection(pika.ConnectionParameters(BROKER_ADDRESS))
+        channel = connection.channel()
+        exchange = 'fk_events'
+        channel.exchange_declare(exchange=exchange, exchange_type='direct')
+        message = json.loads(msg)
+        message['attributes'] = {}
+        message['attributes']['headers'] = headers
+        message['publishTime'] = str(datetime.utcnow())
 
-        # Pub/Sub data must be bytestring, attributes must be strings
-        future = publisher.publish(
-            topic_path, data=msg, headers=json.dumps(headers)
+        assign_id(message)
+        print(f'{exchange}.{source}')
+
+        channel.basic_publish(
+            exchange=exchange, routing_key=source, body=json.dumps(message).encode('utf-8')
         )
 
-        exception = future.exception()
-        if exception:
-            raise Exception(exception)
-
-        print(f"Published message: {future.result()}")
+        print(f"Published message: {json.dumps(message)}")
 
     except Exception as e:
         # Log any exceptions to stackdriver
         entry = dict(severity="WARNING", message=e)
         print(entry)
+
+
+def assign_id(msg):
+    msg['message_id'] = next(generator)
 
 
 if __name__ == "__main__":

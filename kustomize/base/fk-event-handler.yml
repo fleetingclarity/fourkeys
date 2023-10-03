@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: fk-event-handler
+  namespace: four-keys
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 8000
+    targetPort: 8080
+  selector:
+    app: fk-event-handler
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fk-event-handler
+  namespace: four-keys
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fk-event-handler
+  template:
+    metadata:
+      labels:
+        app: fk-event-handler
+    spec:
+      containers:
+      - name: fk-event-handler
+        imagePullPolicy: Never
+        image: fk-event-handler:latest
+        env:
+        - name: FK_BROKER_ADDRESS
+          value: rabbit.four-keys.svc.cluster.local
+        - name: FK_TOKEN
+          value: changeme
+        - name: FK_GITHUB_SECRET
+          value: changme
+        - name: PORT
+          value: "8080"

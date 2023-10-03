@@ -1,4 +1,5 @@
 # Copyright 2020 Google LLC
+# Copyright 2023 fleetingclarity <72276886+fleetingclarity@users.noreply.github.com>
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,88 +14,134 @@
 # limitations under the License.
 import hashlib
 import json
+import os
 
-from google.cloud import bigquery
+import mysql.connector
+from mysql.connector import Error
+
+config = {
+    'host': os.environ.get('FK_DB_HOST'),
+    'user': os.environ.get('FK_DB_USER'),
+    'password': os.environ.get('FK_DB_PW'),
+    'database': 'four_keys'
+}
 
 
-def insert_row_into_bigquery(event):
+def insert_row_into_events_raw(event):
     if not event:
         raise Exception("No data to insert")
 
-    # Set up bigquery instance
-    client = bigquery.Client()
-    dataset_id = "four_keys"
-    table_id = "events_raw"
+    connection = None
+    cursor = None
 
-    if is_unique(client, event["signature"]):
-        table_ref = client.dataset(dataset_id).table(table_id)
-        table = client.get_table(table_ref)
+    try:
+        connection = mysql.connector.connect(**config)
 
-        # Insert row
-        row_to_insert = [
-            (
-                event["event_type"],
-                event["id"],
-                event["metadata"],
-                event["time_created"],
-                event["signature"],
-                event["msg_id"],
-                event["source"],
-            )
-        ]
-        bq_errors = client.insert_rows(table, row_to_insert)
-
-        # If errors, log to Stackdriver
-        if bq_errors:
-            entry = {
-                "severity": "WARNING",
-                "msg": "Row not inserted.",
-                "errors": bq_errors,
-                "row": row_to_insert,
-            }
-            print(json.dumps(entry))
+        if is_unique(connection, 'events_raw', event["signature"]):
+            # Insert row
+            row_to_insert = [
+                (
+                    event["id"],
+                    event["event_type"],
+                    json.dumps(event["metadata"]),
+                    event["time_created"],
+                    event["signature"],
+                    event["msg_id"],
+                    event["source"],
+                )
+            ]
+            cursor = connection.cursor()
+            insert_query = """
+            INSERT INTO events_raw (id, event_type, metadata, time_created, signature, msg_id, source)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """
+            try:
+                cursor.executemany(insert_query, row_to_insert)
+                connection.commit()
+            except Error as e:
+                entry = {
+                    "severity": "WARNING",
+                    "msg": "Row not inserted.",
+                    "errors": str(e),
+                    "row": row_to_insert,
+                }
+                print(json.dumps(entry))
+    except Error as e:
+        print(f'error inserting a row: {e}')
+        connection.rollback()
+    finally:
+        if cursor:
+            cursor.close()
+        if connection and connection.is_connected():
+            connection.close()
 
 
 def insert_row_into_events_enriched(event):
     if not event:
         raise Exception("No data to insert")
 
-    # Set up bigquery instance
-    client = bigquery.Client()
-    dataset_id = "four_keys"
-    table_id = "events_enriched"
+    connection = None
+    cursor = None
+    try:
+        connection = mysql.connector.connect(**config)
+        dataset_id = "four_keys"
 
-    if is_unique(client, event["events_raw_signature"]):
-        table_ref = client.dataset(dataset_id).table(table_id)
-        table = client.get_table(table_ref)
+        if is_unique(connection, 'events_enriched', event["events_raw_signature"]):
+            # Insert row
+            row_to_insert = [
+                (
+                    event["events_raw_signature"],
+                    json.dumps(event["enriched_metadata"])
+                )
+            ]
+            insert_query = """
+            INSERT INTO events_enriched (events_raw_signature, enriched_metadata)
+            VALUES (%s, %s)
+            """
+            try:
+                cursor = connection.cursor()
+                cursor.executemany(insert_query, row_to_insert)
 
-        # Insert row
-        row_to_insert = [
-            (
-                event["events_raw_signature"],
-                event["enriched_metadata"]
-            )
-        ]
-        bq_errors = client.insert_rows(table, row_to_insert)
+            except Error as e:
+                entry = {
+                    "severity": "WARNING",
+                    "msg": "Row not inserted.",
+                    "errors": e,
+                    "row": row_to_insert,
+                }
+                print(json.dumps(entry))
 
-        # If errors, log to Stackdriver
-        if bq_errors:
-            entry = {
-                "severity": "WARNING",
-                "msg": "Row not inserted.",
-                "errors": bq_errors,
-                "row": row_to_insert,
-            }
-            print(json.dumps(entry))
+    except Error as e:
+        print(f'error inserting enriched: {e}')
+        connection.rollback()
+    finally:
+        if cursor:
+            cursor.close()
+        if connection and connection.is_connected():
+            connection.close()
 
 
-def is_unique(client, signature):
-    sql = "SELECT signature FROM four_keys.events_raw WHERE signature = '%s'"
-    query_job = client.query(sql % signature)
-    results = query_job.result()
-    return not results.total_rows
+def is_unique(connection, table, signature):
+    cursor = connection.cursor()
+    sql = f"SELECT signature FROM four_keys.{table} WHERE {SIGNATURE_FIELDS[table]} = '{signature}';"
+    result = None
+    try:
+        cursor.execute(sql)
+        result = cursor.fetchall()
+    except Error as e:
+        print(f'stuff about the failure: {e}')
+    finally:
+        if cursor:
+            cursor.close()
+    return not result
 
 
 def create_unique_id(msg):
     hashed = hashlib.sha1(bytes(json.dumps(msg), "utf-8"))
     return hashed.hexdigest()
+
+
+SIGNATURE_FIELDS = {
+    "events_raw": "signature",
+    "events_enriched": "events_raw_signature"
+}

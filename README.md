@@ -1,3 +1,13 @@
+# Four keys for everyone
+Four keys for everyone is a fork of the Google/DORA Team project `Four Keys`. This fork seeks to eliminate the usage of GCP services and instead use technologies that are cloud provider agnostic.
+
+The idea for this fork came about when I learned of the Four Keys project from the DORA Team and was immediately excited by the prospect of visualizing my organization's key metrics, but then was just as quickly disappointed to learn that the project relies heavily on Google Cloud. The powers that be at my organization are all but openly hostile to the prospect of using multiple cloud providers.
+
+If you're interested in collecting and visualizing your organization's four key metrics, but you don't have access to GCP then this may be a good project for you.
+
+
+# -/-/-/-/-/-/-/-/-/-/-/- Content Below is from Original Repo -/-/-/-/-/-/-/-/-/-/-/-
+
 ![Four Keys](images/fourkeys_wide.svg)
 
 [![Four Keys YouTube Video](images/youtube-screenshot.png)](https://www.youtube.com/watch?v=2rzvIL29Nz0 "Measuring Devops: The Four Keys Project")

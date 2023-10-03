@@ -30,8 +30,8 @@
   "panels": [
     {
       "datasource": {
-        "type": "grafana-bigquery-datasource",
-        "uid": "P8042CABD7873BED6"
+        "type": "four-keys-mariadb",
+        "uid": "P900178F5D82CFA7C"
       },
       "fieldConfig": {
         "defaults": {
@@ -107,15 +107,15 @@
       "targets": [
         {
           "datasource": {
-            "type": "grafana-bigquery-datasource",
-            "uid": "P8042CABD7873BED6"
+            "type": "four-keys-mariadb",
+            "uid": "P900178F5D82CFA7C"
           },
           "editorMode": "code",
-          "format": 1,
+          "format": "time_series",
           "location": "US",
           "project": "gglobo-deployment-frq-hdg-prd",
           "rawQuery": true,
-          "rawSql": "SELECT\n day,\n IFNULL(ANY_VALUE(med_time_to_change)/60, 0) AS median_time_to_change, # Hours\nFROM (\n SELECT\n  d.deploy_id,\n  TIMESTAMP_TRUNC(d.time_created, DAY) AS day,\n  PERCENTILE_CONT(\n  IF(TIMESTAMP_DIFF(d.time_created, c.time_created, MINUTE) > 0, TIMESTAMP_DIFF(d.time_created, c.time_created, MINUTE), NULL), # Ignore automated pushes\n  0.5) # Median\n  OVER (PARTITION BY TIMESTAMP_TRUNC(d.time_created, DAY)) AS med_time_to_change, # Minutes\n FROM four_keys.deployments d, d.changes\n LEFT JOIN four_keys.changes c ON changes = c.change_id\n)\nGROUP BY day\nORDER BY day",
+          "rawSql": "SELECT\n    CAST(day AS DATETIME) as time,\n    IFNULL(AVG(time_diff)/60, 0) AS median_time_to_change\nFROM (\n    SELECT\n        d.time_created AS day,\n        d.deploy_id,\n        IF(\n            TIMESTAMPDIFF(MINUTE, c.time_created, d.time_created) > 0, \n            TIMESTAMPDIFF(MINUTE, c.time_created, d.time_created), \n            NULL\n        ) AS time_diff,\n        ROW_NUMBER() OVER(PARTITION BY DATE(d.time_created) ORDER BY TIMESTAMPDIFF(MINUTE, c.time_created, d.time_created)) AS rn_asc,\n        ROW_NUMBER() OVER(PARTITION BY DATE(d.time_created) ORDER BY TIMESTAMPDIFF(MINUTE, c.time_created, d.time_created) DESC) AS rn_desc,\n        COUNT(*) OVER(PARTITION BY DATE(d.time_created)) AS cnt\n    FROM deployments d\n    LEFT JOIN changes c ON d.main_commit = c.change_id\n) AS subquery\nWHERE rn_asc BETWEEN cnt/2 AND cnt/2 + 1 OR rn_desc BETWEEN cnt/2 AND cnt/2 + 1\nGROUP BY day\nORDER BY day;\n",
           "refId": "A",
           "sql": {
             "columns": [
@@ -141,8 +141,8 @@
     },
     {
       "datasource": {
-        "type": "grafana-bigquery-datasource",
-        "uid": "P8042CABD7873BED6"
+        "type": "four-keys-mariadb",
+        "uid": "P900178F5D82CFA7C"
       },
       "description": "",
       "fieldConfig": {
@@ -214,15 +214,15 @@
       "targets": [
         {
           "datasource": {
-            "type": "grafana-bigquery-datasource",
-            "uid": "P8042CABD7873BED6"
+            "type": "four-keys-mariadb",
+            "uid": "P900178F5D82CFA7C"
           },
           "editorMode": "code",
-          "format": 1,
+          "format": "table",
           "location": "US",
           "project": "gglobo-deployment-frq-hdg-prd",
           "rawQuery": true,
-          "rawSql": "SELECT \n CASE\n  WHEN median_time_to_change < 24 * 60 then \"One day\"\n  WHEN median_time_to_change < 168 * 60 then \"One week\"\n  WHEN median_time_to_change < 730 * 60 then \"One month\"\n  WHEN median_time_to_change < 730 * 6 * 60 then \"Six months\"\n  ELSE \"One year\"\n END as lead_time_to_change\nFROM (\n SElECT\n  IFNULL(ANY_VALUE(med_time_to_change), 0) AS median_time_to_change\n FROM (\n   SELECT\n   PERCENTILE_CONT(\n    IF(TIMESTAMP_DIFF(d.time_created, c.time_created, MINUTE) > 0, TIMESTAMP_DIFF(d.time_created, c.time_created, MINUTE), NULL), # Ignore automated pushes\n    0.5) # Median\n    OVER () AS med_time_to_change, # Minutes\n  FROM four_keys.deployments d, d.changes\n  LEFT JOIN four_keys.changes c ON changes = c.change_id\n  WHERE d.time_created > TIMESTAMP(DATE_SUB(CURRENT_DATE(), INTERVAL 3 MONTH))\n )\n)",
+          "rawSql": "SELECT \n CASE\n  WHEN median_time_to_change < 24 * 60 THEN 'One day'\n  WHEN median_time_to_change < 168 * 60 THEN 'One week'\n  WHEN median_time_to_change < 730 * 60 THEN 'One month'\n  WHEN median_time_to_change < 730 * 6 * 60 THEN 'Six months'\n  ELSE 'One year'\n END AS lead_time_to_change\nFROM (\n SELECT\n  IFNULL(AVG(diff_minutes), 0) AS median_time_to_change\n FROM (\n   SELECT\n   TIMESTAMPDIFF(MINUTE, c.time_created, d.time_created) AS diff_minutes,\n   IF(@rownum:=@rownum+1, @rownum, @rownum) AS row_num\n   FROM deployments d\n   LEFT JOIN changes c ON d.main_commit = c.change_id\n   CROSS JOIN (SELECT @rownum:=0) r\n   WHERE d.time_created > DATE_SUB(CURRENT_DATE, INTERVAL 3 MONTH)\n   ORDER BY diff_minutes\n ) AS diffs\n WHERE row_num BETWEEN FLOOR((@rownum+1)/2) AND CEIL((@rownum+1)/2)\n) AS subquery;\n",
           "refId": "A",
           "sql": {
             "columns": [
@@ -248,8 +248,8 @@
     },
     {
       "datasource": {
-        "type": "grafana-bigquery-datasource",
-        "uid": "P8042CABD7873BED6"
+        "type": "four-keys-mariadb",
+        "uid": "P900178F5D82CFA7C"
       },
       "fieldConfig": {
         "defaults": {
@@ -325,15 +325,15 @@
       "targets": [
         {
           "datasource": {
-            "type": "grafana-bigquery-datasource",
-            "uid": "P8042CABD7873BED6"
+            "type": "four-keys-mariadb",
+            "uid": "P900178F5D82CFA7C"
           },
           "editorMode": "code",
-          "format": 1,
+          "format": "time_series",
           "location": "US",
           "project": "gglobo-deployment-frq-hdg-prd",
           "rawQuery": true,
-          "rawSql": "SELECT\nTIMESTAMP_TRUNC(time_created, DAY) AS day,\nCOUNT(distinct deploy_id) AS deployments\nFROM\nfour_keys.deployments\nGROUP BY day\nORDER BY day",
+          "rawSql": "SELECT\nDATE(time_created) AS time,\nCOUNT(DISTINCT deploy_id) AS deployments\nFROM deployments\nGROUP BY time\nORDER BY time;",
           "refId": "A",
           "sql": {
             "columns": [
@@ -359,8 +359,8 @@
     },
     {
       "datasource": {
-        "type": "grafana-bigquery-datasource",
-        "uid": "P8042CABD7873BED6"
+        "type": "four-keys-mariadb",
+        "uid": "P900178F5D82CFA7C"
       },
       "description": "",
       "fieldConfig": {
@@ -429,15 +429,15 @@
       "targets": [
         {
           "datasource": {
-            "type": "grafana-bigquery-datasource",
-            "uid": "P8042CABD7873BED6"
+            "type": "four-keys-mariadb",
+            "uid": "P900178F5D82CFA7C"
           },
           "editorMode": "code",
-          "format": 1,
+          "format": "table",
           "location": "US",
           "project": "gglobo-deployment-frq-hdg-prd",
           "rawQuery": true,
-          "rawSql": "WITH last_three_months AS\n(SELECT\nTIMESTAMP(day) AS day\nFROM\nUNNEST(\nGENERATE_DATE_ARRAY(\n    DATE_SUB(CURRENT_DATE(), INTERVAL 3 MONTH), CURRENT_DATE(),\n    INTERVAL 1 DAY)) AS day\n# FROM the start of the data\nWHERE day > (SELECT date(min(time_created)) FROM four_keys.events_raw)\n)\n\nSELECT\nCASE WHEN daily THEN \"Daily\" \n     WHEN weekly THEN \"Weekly\" \n      # If at least one per month, then Monthly\n     WHEN PERCENTILE_CONT(monthly_deploys, 0.5) OVER () >= 1 THEN  \"Monthly\" \n     ELSE \"Yearly\"\n     END as deployment_frequency\nFROM (\n  SELECT\n  # If the median number of days per week is more than 3, then Daily\n  PERCENTILE_CONT(days_deployed, 0.5) OVER() >= 3 AS daily,\n  # If most weeks have a deployment, then Weekly\n  PERCENTILE_CONT(week_deployed, 0.5) OVER() >= 1 AS weekly,\n\n  # Count the number of deployments per month.  \n  # Cannot mix aggregate and analytic functions, so calculate the median in the outer select statement\n  SUM(week_deployed) OVER(partition by TIMESTAMP_TRUNC(week, MONTH)) monthly_deploys\n  FROM(\n      SELECT\n      TIMESTAMP_TRUNC(last_three_months.day, WEEK) as week,\n      MAX(if(deployments.day is not null, 1, 0)) as week_deployed,\n      COUNT(distinct deployments.day) as days_deployed\n      FROM last_three_months\n      LEFT JOIN(\n        SELECT\n        TIMESTAMP_TRUNC(time_created, DAY) AS day,\n        deploy_id\n        FROM four_keys.deployments) deployments ON deployments.day = last_three_months.day\n      GROUP BY week)\n )\nLIMIT 1",
+          "rawSql": "WITH RECURSIVE last_three_months AS (\n    SELECT DATE_SUB(CURRENT_DATE, INTERVAL 3 MONTH) AS day\n    UNION ALL\n    SELECT DATE_ADD(day, INTERVAL 1 DAY)\n    FROM last_three_months\n    WHERE day < CURRENT_DATE AND day > (SELECT DATE(MIN(time_created)) FROM events_raw)\n),\n\ndeployments_per_day AS (\n    SELECT DATE(time_created) AS deploy_day, COUNT(DISTINCT deploy_id) AS daily_deploys\n    FROM deployments\n    GROUP BY deploy_day\n),\n\ndeployments_per_week AS (\n    SELECT WEEK(last_three_months.day) AS week, SUM(daily_deploys) > 0 AS week_deployed, COUNT(DISTINCT last_three_months.day) AS days_deployed\n    FROM last_three_months\n    LEFT JOIN deployments_per_day ON deployments_per_day.deploy_day = last_three_months.day\n    GROUP BY week\n),\n\nmedian_calc AS (\n    SELECT days_deployed, week_deployed,\n           ROW_NUMBER() OVER (ORDER BY days_deployed) AS rn_days,\n           ROW_NUMBER() OVER (ORDER BY week_deployed) AS rn_weeks,\n           COUNT(*) OVER () AS cnt\n    FROM deployments_per_week\n)\n\nSELECT\n    CASE \n        WHEN AVG(days_deployed) OVER (PARTITION BY CASE WHEN rn_days BETWEEN cnt/2 AND cnt/2 + 1 THEN 1 ELSE 0 END) >= 3 THEN 'Daily'\n        WHEN AVG(week_deployed) OVER (PARTITION BY CASE WHEN rn_weeks BETWEEN cnt/2 AND cnt/2 + 1 THEN 1 ELSE 0 END) >= 1 THEN 'Weekly'\n        ELSE 'Yearly'\n    END AS deployment_frequency\nFROM median_calc\nLIMIT 1;\n",
           "refId": "A",
           "sql": {
             "columns": [
@@ -463,8 +463,8 @@
     },
     {
       "datasource": {
-        "type": "grafana-bigquery-datasource",
-        "uid": "P8042CABD7873BED6"
+        "type": "four-keys-mariadb",
+        "uid": "P900178F5D82CFA7C"
       },
       "fieldConfig": {
         "defaults": {
@@ -540,15 +540,15 @@
       "targets": [
         {
           "datasource": {
-            "type": "grafana-bigquery-datasource",
-            "uid": "P8042CABD7873BED6"
+            "type": "four-keys-mariadb",
+            "uid": "P900178F5D82CFA7C"
           },
           "editorMode": "code",
-          "format": 1,
+          "format": "time_series",
           "location": "US",
           "project": "gglobo-deployment-frq-hdg-prd",
           "rawQuery": true,
-          "rawSql": "SELECT\n  TIMESTAMP_TRUNC(time_created, DAY) as day,\n  #### Median time to resolve\n  PERCENTILE_CONT(\n    TIMESTAMP_DIFF(time_resolved, time_created, HOUR), 0.5)\n    OVER(PARTITION BY TIMESTAMP_TRUNC(time_created, DAY)\n    ) as daily_med_time_to_restore,\n  FROM four_keys.incidents\nORDER BY day",
+          "rawSql": "WITH incidents_sorted AS (\n    SELECT \n        DATE(time_created) AS day,\n        TIMESTAMPDIFF(HOUR, time_created, time_resolved) AS hours_to_restore,\n        ROW_NUMBER() OVER (PARTITION BY DATE(time_created) ORDER BY TIMESTAMPDIFF(HOUR, time_created, time_resolved)) AS rn_asc,\n        ROW_NUMBER() OVER (PARTITION BY DATE(time_created) ORDER BY TIMESTAMPDIFF(HOUR, time_created, time_resolved) DESC) AS rn_desc,\n        COUNT(*) OVER (PARTITION BY DATE(time_created)) AS cnt\n    FROM incidents\n    WHERE time_resolved IS NOT NULL\n)\n\nSELECT \n    day as time,\n    CASE \n        WHEN cnt % 2 = 1 THEN \n            AVG(hours_to_restore) OVER (PARTITION BY day, CASE WHEN rn_asc = rn_desc THEN 1 ELSE 0 END)\n        ELSE \n            (AVG(hours_to_restore) OVER (PARTITION BY day, CASE WHEN rn_asc = rn_desc THEN 1 ELSE 0 END) +\n             AVG(hours_to_restore) OVER (PARTITION BY day, CASE WHEN rn_asc = rn_desc - 1 THEN 1 ELSE 0 END)) / 2\n    END AS daily_med_time_to_restore\nFROM incidents_sorted\nORDER BY time;",
           "refId": "A",
           "sql": {
             "columns": [
@@ -574,8 +574,8 @@
     },
     {
       "datasource": {
-        "type": "grafana-bigquery-datasource",
-        "uid": "P8042CABD7873BED6"
+        "type": "four-keys-mariadb",
+        "uid": "P900178F5D82CFA7C"
       },
       "description": "",
       "fieldConfig": {
@@ -647,15 +647,15 @@
       "targets": [
         {
           "datasource": {
-            "type": "grafana-bigquery-datasource",
-            "uid": "P8042CABD7873BED6"
+            "type": "four-keys-mariadb",
+            "uid": "P900178F5D82CFA7C"
           },
           "editorMode": "code",
-          "format": 1,
+          "format": "table",
           "location": "US",
           "project": "gglobo-deployment-frq-hdg-prd",
           "rawQuery": true,
-          "rawSql": "SELECT\nCASE WHEN med_time_to_resolve < 24  then \"One day\"\n     WHEN med_time_to_resolve < 168  then \"One week\"\n     WHEN med_time_to_resolve < 730  then \"One month\"\n     WHEN med_time_to_resolve < 730 * 6 then \"Six months\"\n     ELSE \"One year\"\n     END as med_time_to_resolve,\nFROM (\n  SELECT\n  #### Median time to resolve\n  PERCENTILE_CONT(\n    TIMESTAMP_DIFF(time_resolved, time_created, HOUR), 0.5)\n    OVER() as med_time_to_resolve,\n  FROM four_keys.incidents\n  # Limit to 3 months\n  WHERE time_created > TIMESTAMP(DATE_SUB(CURRENT_DATE(), INTERVAL 3 MONTH)))\nLIMIT 1",
+          "rawSql": "WITH incidents_sorted AS (\n    SELECT \n        TIMESTAMPDIFF(HOUR, time_created, time_resolved) AS hours_to_resolve,\n        ROW_NUMBER() OVER (ORDER BY TIMESTAMPDIFF(HOUR, time_created, time_resolved)) AS rn_asc,\n        ROW_NUMBER() OVER (ORDER BY TIMESTAMPDIFF(HOUR, time_created, time_resolved) DESC) AS rn_desc,\n        COUNT(*) OVER () AS cnt\n    FROM incidents\n    WHERE time_resolved IS NOT NULL\n    AND time_created > DATE_SUB(CURRENT_DATE, INTERVAL 3 MONTH)\n)\n\n, median_calc AS (\n    SELECT \n        CASE \n            WHEN cnt % 2 = 1 THEN \n                AVG(hours_to_resolve) OVER (PARTITION BY CASE WHEN rn_asc = rn_desc THEN 1 ELSE 0 END)\n            ELSE \n                (AVG(hours_to_resolve) OVER (PARTITION BY CASE WHEN rn_asc = rn_desc THEN 1 ELSE 0 END) +\n                AVG(hours_to_resolve) OVER (PARTITION BY CASE WHEN rn_asc = rn_desc - 1 THEN 1 ELSE 0 END)) / 2\n        END AS med_time_to_resolve\n    FROM incidents_sorted\n)\n\nSELECT \n    CASE \n        WHEN med_time_to_resolve < 24 THEN \"One day\"\n        WHEN med_time_to_resolve < 168 THEN \"One week\"\n        WHEN med_time_to_resolve < 730 THEN \"One month\"\n        WHEN med_time_to_resolve < 730 * 6 THEN \"Six months\"\n        ELSE \"One year\"\n    END AS med_time_to_resolve\nFROM median_calc\nLIMIT 1;\n",
           "refId": "A",
           "sql": {
             "columns": [
@@ -681,8 +681,8 @@
     },
     {
       "datasource": {
-        "type": "grafana-bigquery-datasource",
-        "uid": "P8042CABD7873BED6"
+        "type": "four-keys-mariadb",
+        "uid": "P900178F5D82CFA7C"
       },
       "fieldConfig": {
         "defaults": {
@@ -757,15 +757,15 @@
       "targets": [
         {
           "datasource": {
-            "type": "grafana-bigquery-datasource",
-            "uid": "P8042CABD7873BED6"
+            "type": "four-keys-mariadb",
+            "uid": "P900178F5D82CFA7C"
           },
           "editorMode": "code",
-          "format": 1,
+          "format": "time_series",
           "location": "US",
           "project": "gglobo-deployment-frq-hdg-prd",
           "rawQuery": true,
-          "rawSql": "SELECT\nTIMESTAMP_TRUNC(d.time_created, DAY) as day,\n  IF(COUNT(DISTINCT change_id) = 0,0, SUM(IF(i.incident_id is NULL, 0, 1)) / COUNT(DISTINCT deploy_id)) as change_fail_rate\nFROM four_keys.deployments d, d.changes\nLEFT JOIN four_keys.changes c ON changes = c.change_id\nLEFT JOIN(SELECT\n        DISTINCT incident_id,\n        change,\n        time_resolved\n        FROM four_keys.incidents i,\n        i.changes change) i ON i.change = changes\nGROUP BY day",
+          "rawSql": "SELECT\n    DATE(d.time_created) as time,\n    IF(COUNT(DISTINCT ch.change_id) = 0, 0, \n       SUM(IF(i.incident_id IS NULL, 0, 1)) / COUNT(DISTINCT d.deploy_id)) as change_fail_rate\nFROM deployments d\nLEFT JOIN changes ch ON d.main_commit = ch.change_id\nLEFT JOIN incidents i ON ch.change_id = JSON_UNQUOTE(JSON_EXTRACT(i.changes, '$[0]'))\nGROUP BY time\nORDER BY time;",
           "refId": "A",
           "sql": {
             "columns": [
@@ -791,8 +791,8 @@
     },
     {
       "datasource": {
-        "type": "grafana-bigquery-datasource",
-        "uid": "P8042CABD7873BED6"
+        "type": "four-keys-mariadb",
+        "uid": "P900178F5D82CFA7C"
       },
       "description": "",
       "fieldConfig": {
@@ -856,15 +856,15 @@
       "targets": [
         {
           "datasource": {
-            "type": "grafana-bigquery-datasource",
-            "uid": "P8042CABD7873BED6"
+            "type": "four-keys-mariadb",
+            "uid": "P900178F5D82CFA7C"
           },
           "editorMode": "code",
-          "format": 1,
+          "format": "table",
           "location": "US",
           "project": "gglobo-deployment-frq-hdg-prd",
           "rawQuery": true,
-          "rawSql": "SELECT\nCASE WHEN change_fail_rate <= .15 then \"0-15%\"\n     WHEN change_fail_rate < .46 then \"16-45%\"\n     ELSE \"46-60%\" end as change_fail_rate\nFROM \n (SELECT\n    IF(COUNT(DISTINCT change_id) = 0,0, SUM(IF(i.incident_id is NULL, 0, 1)) / COUNT(DISTINCT deploy_id)) as change_fail_rate\n  FROM four_keys.deployments d, d.changes\n  LEFT JOIN four_keys.changes c ON changes = c.change_id\n  LEFT JOIN(SELECT\n          incident_id,\n          change,\n          time_resolved\n          FROM four_keys.incidents i,\n          i.changes change) i ON i.change = changes\n  # Limit to 3 months\n  WHERE d.time_created > TIMESTAMP(DATE_SUB(CURRENT_DATE(), INTERVAL 3 MONTH))\n  )\nLIMIT 1",
+          "rawSql": "SELECT\n    CASE \n        WHEN change_fail_rate <= 0.15 THEN \"0-15%\"\n        WHEN change_fail_rate < 0.46 THEN \"16-45%\"\n        ELSE \"46-60%\" \n    END AS change_fail_rate\nFROM \n(\n    SELECT\n        IF(COUNT(DISTINCT ch.change_id) = 0, 0, \n           SUM(IF(i.incident_id IS NULL, 0, 1)) / COUNT(DISTINCT d.deploy_id)) AS change_fail_rate\n    FROM deployments d\n    LEFT JOIN changes ch ON d.main_commit = ch.change_id\n    LEFT JOIN incidents i ON ch.change_id = JSON_UNQUOTE(JSON_EXTRACT(i.changes, '$[0]'))\n    WHERE d.time_created > DATE_SUB(CURRENT_DATE, INTERVAL 3 MONTH)\n) AS subquery\nLIMIT 1;\n",
           "refId": "A",
           "sql": {
             "columns": [

@@ -12,16 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from setuptools import setup
 
-setup(
-   name='shared',
-   version='1.0',
-   description='Shared functions for the Four Keys pipeline',
-   url='git@github.com:four-keys-playground.git#egg=shared&subdirectory=shared',
-   author='Google Inc.',
-   license='Apache-2.0',
-   py_modules=['shared'],
-   install_requires=['mysql-connector-python'],
-   zip_safe=False
-)
+# Use the official Python image.
+# https://hub.docker.com/_/python
+FROM python:3.10
+
+# Allow statements and log messages to immediately appear in the Cloud Run logs
+ENV PYTHONUNBUFFERED True
+
+# Copy application dependency manifests to the container image.
+# Copying this separately prevents re-running pip install on every code change.
+COPY requirements.txt .
+
+# Install production dependencies.
+RUN pip install -r requirements.txt
+
+# Copy local code to the container image.
+ENV APP_HOME /app
+WORKDIR $APP_HOME
+COPY . .
+
+CMD python main.py

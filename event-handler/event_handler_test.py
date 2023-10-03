@@ -70,7 +70,7 @@ def test_verified_signature(client):
 @mock.patch("sources.get_secret", mock.MagicMock(return_value=b"foo"))
 def test_data_sent_to_pubsub(client):
     signature = "sha1=" + hmac.new(b"foo", b"Hello", sha1).hexdigest()
-    event_handler.publish_to_pubsub = mock.MagicMock(return_value=True)
+    event_handler.publish_to_broker = mock.MagicMock(return_value=True)
     headers = {
         "User-Agent": "GitHub-Hookshot",
         "Host": "localhost",
@@ -80,7 +80,7 @@ def test_data_sent_to_pubsub(client):
 
     r = client.post("/", data="Hello", headers=headers)
 
-    event_handler.publish_to_pubsub.assert_called_with(
+    event_handler.publish_to_broker.assert_called_with(
         "github", b"Hello", headers
     )
     assert r.status_code == 204
