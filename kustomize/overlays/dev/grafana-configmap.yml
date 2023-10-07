@@ -2,7 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: grafana-config
-  namespace: four-keys
+  namespace: fourkeys
 data:
   grafana.ini: |
     [live]
@@ -27,7 +27,7 @@ data:
         user: "$FK_DB_USER"            # using environment variable for username
         secureJsonData:
           password: "$FK_DB_PASSWORD"  # using environment variable for password
-        url: "db.four-keys.svc.cluster.local:$DB_SERVICE_PORT"                 # specify your MariaDB host and port
+        url: "db.fourkeys.svc.cluster.local:$DB_SERVICE_PORT"                 # specify your MariaDB host and port
         version: 3
         readOnly: false
   fourkeys_dashboard.json: |

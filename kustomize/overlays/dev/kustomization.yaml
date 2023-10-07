@@ -2,7 +2,7 @@
 resources:
   - ../../base
   - fk-gitlab-parser.yml
-  - grafana-dashboards.yml
+  - grafana-configmap.yml
   - grafana.yml
   - mariadb.yml
   - rabbit.yml

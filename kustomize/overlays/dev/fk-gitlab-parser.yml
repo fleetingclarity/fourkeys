@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: fk-gitlab-parser
-  namespace: four-keys
+  namespace: fourkeys
 spec:
   replicas: 1
   selector:
@@ -16,12 +16,12 @@ spec:
       containers:
       - name: fk-gitlab-parser
         imagePullPolicy: Never
-        image: fk-gitlab-parser:latest
+        image: fleetingclarity/fourkeys/workers/gitlab-parser:main
         env:
         - name: FK_BROKER_ADDRESS
-          value: rabbit.four-keys.svc.cluster.local
+          value: rabbit.fourkeys.svc.cluster.local
         - name: FK_DB_HOST
-          value: db.four-keys.svc.cluster.local
+          value: db.fourkeys.svc.cluster.local
         - name: FK_DB_PW
           value: fourkeys
         - name: FK_DB_USER

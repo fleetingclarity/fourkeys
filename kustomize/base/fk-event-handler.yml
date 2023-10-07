@@ -2,9 +2,9 @@ apiVersion: v1
 kind: Service
 metadata:
   name: fk-event-handler
-  namespace: four-keys
+  namespace: fourkeys
 spec:
-  type: LoadBalancer
+  type: ClusterIP
   ports:
   - port: 8000
     targetPort: 8080
@@ -15,7 +15,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: fk-event-handler
-  namespace: four-keys
+  namespace: fourkeys
 spec:
   replicas: 1
   selector:
@@ -27,12 +27,12 @@ spec:
         app: fk-event-handler
     spec:
       containers:
-      - name: fk-event-handler
+      - name: fleetingclarity/fourkeys/event-handler:main
         imagePullPolicy: Never
         image: fk-event-handler:latest
         env:
         - name: FK_BROKER_ADDRESS
-          value: rabbit.four-keys.svc.cluster.local
+          value: rabbit.fourkeys.svc.cluster.local
         - name: FK_TOKEN
           value: changeme
         - name: FK_GITHUB_SECRET
