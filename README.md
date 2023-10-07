@@ -5,6 +5,29 @@ The idea for this fork came about when I learned of the Four Keys project from t
 
 If you're interested in collecting and visualizing your organization's four key metrics, you don't have access to GCP, but you do have the ability to build and run container workloads, then this project may be a good fit for you.
 
+Milestone Basic Approach (v1.0.0):
+  - [x] Replace Big Query
+  - [x] Replace GCP infra
+  - [x] Replace GCP Pub/Sub
+  - [ ] Simple kubernetes example
+  - [ ] Worker conversions
+    - [x] Gitlab
+    - [ ] Github
+
+Milestone Finish Conversion (v1.1.0):
+  - [ ] Worker conversions
+    - [ ] Argocd
+    - [ ] Circleci
+    - [ ] Pagerduty
+    - [ ] Tekton
+    - [ ] Template
+
+Milestone Enhancements (v1.2.0)
+  - [ ] K8s operator
+  - [ ] New worker Jira
+  - [ ] Enhanced testing tool for custom integrations
+
+
 # -/-/- Content Below is from Original Repo -/-/-
 
 ![Four Keys](images/fourkeys_wide.svg)
