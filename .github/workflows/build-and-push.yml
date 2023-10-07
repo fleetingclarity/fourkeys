@@ -35,7 +35,7 @@ jobs:
 
     - name: Format dockerfile path
       run: |
-        echo "FORMATTED_DOCKER_IMAGE=${{ matrix.dockerfile }}".replace(/\//g, '-') >> $GITHUB_ENV
+        echo "FORMATTED_DOCKERFILE=$(echo '${{ matrix.dockerfile }}' | tr '/' '-')" >> $GITHUB_ENV
 
     - name: Determine Docker tag
       run: |
