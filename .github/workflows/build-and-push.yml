@@ -37,7 +37,7 @@ jobs:
       run: |
         REF_NAME="${GITHUB_REF##*/}" # Extracts either 'main' or the tag name.
         IMAGE_NAME="${{ secrets.DOCKER_HUB_USERNAME }}/fourkeys/${{ matrix.dockerfile }}"
-        if [[ "${{ github.event_name }}" == "push" && startsWith(github.ref, 'refs/tags/') ]]; then
+        if [[ "${{ github.event_name }}" == "push" && "${{ startsWith(github.ref, 'refs/tags/') }}" == "true" ]]; then
           echo "DOCKER_TAGS=${IMAGE_NAME}:${REF_NAME},${IMAGE_NAME}:latest" >> $GITHUB_ENV
         else
           echo "DOCKER_TAGS=${IMAGE_NAME}:${REF_NAME}" >> $GITHUB_ENV
