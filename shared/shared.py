@@ -1,5 +1,5 @@
 # Copyright 2020 Google LLC
-# Copyright 2023 fleetingclarity <72276886+fleetingclarity@users.noreply.github.com>
+# Copyright 2023 fleetingclarity <fleetingclarity@proton.me>
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
