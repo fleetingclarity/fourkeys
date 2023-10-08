@@ -10,9 +10,9 @@ Milestone Basic Approach (v1.0.0):
   - [x] Replace GCP infra
   - [x] Replace GCP Pub/Sub
   - [ ] Simple kubernetes example
-  - [ ] Worker conversions
+  - [x] Worker conversions
     - [x] Gitlab
-    - [ ] Github
+    - [x] Github
 
 Milestone Finish Conversion (v1.1.0):
   - [ ] Worker conversions
