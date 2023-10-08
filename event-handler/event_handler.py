@@ -62,12 +62,11 @@ def index():
         abort(403, "Signature does not match expected signature")
 
     # Remove the Auth header so we do not publish it
-    pubsub_headers = dict(request.headers)
-    if "Authorization" in pubsub_headers:
-        del pubsub_headers["Authorization"]
+    headers = dict(request.headers)
+    if "Authorization" in headers:
+        del headers["Authorization"]
 
-    # Publish to Pub/Sub
-    publish_to_broker(source, body, pubsub_headers)
+    publish_to_broker(source, body, headers)
 
     # Flush the stdout to avoid log buffering.
     sys.stdout.flush()
@@ -89,7 +88,7 @@ def publish_to_broker(source, msg, headers):
         message['publishTime'] = str(datetime.utcnow())
 
         assign_id(message)
-        print(f'{exchange}.{source}')
+        print(f'publishing message with id={message["message_id"]} to {exchange}.{source}')
 
         channel.basic_publish(
             exchange=exchange, routing_key=source, body=json.dumps(message).encode('utf-8')
@@ -112,4 +111,4 @@ if __name__ == "__main__":
 
     # This is used when running locally. Gunicorn is used to run the
     # application on Cloud Run. See entrypoint in Dockerfile.
-    app.run(host="127.0.0.1", port=PORT, debug=True)
+    app.run(host="0.0.0.0", port=PORT, debug=True)
