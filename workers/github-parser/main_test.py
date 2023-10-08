@@ -1,146 +1,145 @@
-# Copyright 2020 Google, LLC.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#    http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+#  Copyright (c) 2023. fleetingclarity <fleetingclarity@proton.me>
 
-import base64
-import json
-
-import main
-import shared
-
-import mock
 import pytest
+import json
+from unittest import mock
+import main
+import pika
+from pika.exceptions import AMQPConnectionError
 
 
-@pytest.fixture
-def client():
-    main.app.testing = True
-    return main.app.test_client()
-
-
-def test_not_json(client):
+def test_missing_msg_attributes():
     with pytest.raises(Exception) as e:
-        client.post("/", data="foo")
+        main.consume(None, None, None, json.dumps({"foo": "bar"}).encode())
 
-    assert "Expecting JSON payload" in str(e.value)
-
-
-def test_not_pubsub_message(client):
-    with pytest.raises(Exception) as e:
-        client.post(
-            "/",
-            data=json.dumps({"foo": "bar"}),
-            headers={"Content-Type": "application/json"},
-        )
-
-    assert "Not a valid Pub/Sub Message" in str(e.value)
+    assert "Missing additional attributes" in str(e.value)
 
 
-def test_missing_msg_attributes(client):
-    with pytest.raises(Exception) as e:
-        client.post(
-            "/",
-            data=json.dumps({"message": "bar"}),
-            headers={"Content-Type": "application/json"},
-        )
-
-    assert "Missing pubsub attributes" in str(e.value)
-
-
-def test_github_event_processed(client):
-    headers = {"X-Github-Event": "push", "X-Hub-Signature": "foo"}
-    commit = json.dumps({"head_commit": {"timestamp": 0, "id": "bar"}}).encode(
-        "utf-8"
-    )
-    pubsub_msg = {
-        "message": {
-            "data": base64.b64encode(commit).decode("utf-8"),
-            "attributes": {"headers": json.dumps(headers)},
-            "message_id": "foobar",
-        },
+def test_github_event_processed():
+    headers = {
+        "X-Github-Event": "issues",
+        "X-Hub-Signature": "sha1=b4e0e6c8a926415afa2a752406e0a862d0044b66",
+        "User-Agent": "GitHub-Hookshot/mock",
+        "Mock": "True"
     }
 
-    github_event = {
-        "event_type": "push",
-        "id": "bar",
-        "metadata": '{"head_commit": {"timestamp": 0, "id": "bar"}}',
-        "time_created": 0,
-        "signature": "foo",
-        "msg_id": "foobar",
-        "source": "github",
-    }
-
-    shared.insert_row_into_events_raw = mock.MagicMock()
-
-    r = client.post(
-        "/",
-        data=json.dumps(pubsub_msg),
-        headers={"Content-Type": "application/json"},
-    )
-
-    shared.insert_row_into_events_raw.assert_called_with(github_event)
-    assert r.status_code == 204
-
-
-def test_github_event_avoid_id_conflicts_pull_requests(client):
-
-    headers = {"X-Github-Event": "pull_request", "X-Hub-Signature": "foo"}
-    commit = json.dumps({
-        "pull_request": {
-            "updated_at": "2021-06-15T13:12:14Z"
-        },
-        "repository": {
-            "name": "reponame"
-        },
-        "number": 477
-    }).encode("utf-8")
-
-    encoded_commit = {
-        "data": base64.b64encode(commit).decode("utf-8"),
-        "attributes": {"headers": json.dumps(headers)},
-        "message_id": "foobar",
-    }
-
-    github_event_calculated = main.process_github_event(headers=headers, msg=encoded_commit)
-    github_event_expected = {
-        "id": "reponame/477"
-    }
-
-    assert github_event_calculated["id"] == github_event_expected["id"]
-
-
-def test_github_event_avoid_id_conflicts_issues(client):
-
-    headers = {"X-Github-Event": "issues", "X-Hub-Signature": "foo"}
-    commit = json.dumps({
+    event_payload = {
         "issue": {
-            "updated_at": "2021-06-15T13:12:14Z",
+            "created_at": "2023-10-03 18:37:11.224716",
+            "updated_at": "2023-10-08 08:46:01.603352",
+            "closed_at": "2023-10-08 08:46:01.603355",
+            "number": 614,
+            "labels": [{"name": "Incident"}],
+            "body": "root cause: 0834a2e88bf0049dfb75cce942cb843147b3cd2a"
+        },
+        "repository": {"name": "foobar"},
+        "attributes": {"headers": headers},
+        "publishTime": "2023-10-08 13:46:01.606895",
+        "message_id": 7116780781096697856
+    }
+
+    # Expected result after processing
+    github_event_expected = {
+        "event_type": "issues",
+        "id": "foobar/614",
+        "metadata": json.dumps(event_payload),
+        "time_created": "2023-10-08 08:46:01.603352",
+        "signature": "sha1=b4e0e6c8a926415afa2a752406e0a862d0044b66",
+        "msg_id": 7116780781096697856,
+        "source": "githubmock"  # based on the provided headers
+    }
+
+    # Mocking the function that writes to the database
+    with mock.patch('shared.insert_row_into_events_raw') as mock_insert_function:
+        main.consume(None, None, None, json.dumps(event_payload).encode('utf-8'))
+
+    mock_insert_function.assert_called_with(github_event_expected)
+
+
+def test_github_event_avoid_id_conflicts_pull_requests():
+    headers = {"X-Github-Event": "pull_request", "X-Hub-Signature": "foo", "Mock": "True"}
+    event_payload = {
+        "pull_request": {
+            "updated_at": "2023-06-15T13:12:14Z",
             "number": 477
         },
         "repository": {
             "name": "reponame"
-        }
-    }).encode("utf-8")
-
-    encoded_commit = {
-        "data": base64.b64encode(commit).decode("utf-8"),
-        "attributes": {"headers": json.dumps(headers)},
-        "message_id": "foobar",
+        },
+        "attributes": {"headers": headers}
     }
 
-    github_event_calculated = main.process_github_event(headers=headers, msg=encoded_commit)
+    github_event_calculated = main.process_github_event(headers=headers, msg=event_payload)
     github_event_expected = {
         "id": "reponame/477"
     }
 
     assert github_event_calculated["id"] == github_event_expected["id"]
+
+
+def test_github_event_avoid_id_conflicts_issues():
+    headers = {"X-Github-Event": "issues", "X-Hub-Signature": "foo", "Mock": "True"}
+    event_payload = {
+        "issue": {
+            "updated_at": "2023-06-15T13:12:14Z",
+            "number": 477
+        },
+        "repository": {
+            "name": "reponame"
+        },
+        "attributes": {"headers": headers}
+    }
+
+    github_event_calculated = main.process_github_event(headers=headers, msg=event_payload)
+    github_event_expected = {
+        "id": "reponame/477"
+    }
+
+    assert github_event_calculated["id"] == github_event_expected["id"]
+
+
+def test_unsupported_github_event_raises_exception():
+    headers = {"X-Github-Event": "unsupported_event", "X-Hub-Signature": "foo"}
+    msg = {}
+
+    with pytest.raises(Exception) as e:
+        main.process_github_event(headers=headers, msg=msg)
+
+    assert "Unsupported GitHub event" in str(e.value)
+
+
+def test_create_connection_with_successful_connection():
+    with mock.patch("pika.BlockingConnection") as MockedConnection:
+        main.create_connection()
+
+    assert MockedConnection.call_count == 1
+
+
+def test_create_connection_with_retries():
+    with mock.patch("pika.BlockingConnection", side_effect=pika.exceptions.AMQPConnectionError):
+        with pytest.raises(Exception) as e:
+            main.create_connection()
+
+    assert f"Failed to connect to RabbitMQ after multiple retries ({main.MAX_RETRIES})" in str(e.value)
+
+
+def test_index_with_keyboard_interrupt():
+    with mock.patch("main.create_connection") as MockedCreateConnection, \
+            mock.patch.object(main, 'channel', autospec=True) as mock_channel:
+
+        mock_channel.start_consuming.side_effect = KeyboardInterrupt
+        main.index()
+
+    mock_channel.stop_consuming.assert_called_once()
+
+
+def test_index_with_connection_closed_by_broker(capsys):
+    with mock.patch("main.create_connection") as MockedCreateConnection, \
+            mock.patch.object(main, 'channel', autospec=True) as mock_channel:
+
+        mock_channel.start_consuming.side_effect = pika.exceptions.ConnectionClosedByBroker
+        main.index()
+
+    mock_channel.stop_consuming.assert_called_once()
+    assert "Connection was closed by the broker." in capsys.readouterr().out
+

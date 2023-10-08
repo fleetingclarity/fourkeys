@@ -12,43 +12,95 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import base64
 import os
 import json
+import time
+
+import pika
+from pika.adapters.blocking_connection import BlockingChannel
+from pika.exceptions import AMQPConnectionError
+from pika.amqp_object import Properties
+from pika.spec import Basic
 
 import shared
 
-from flask import Flask, request
+BROKER_ADDRESS = os.environ.get('FK_BROKER_ADDRESS')
 
-app = Flask(__name__)
+connection = None
+channel = None
+
+MAX_RETRIES = 5
+RETRY_DELAY = 5
 
 
-@app.route("/", methods=["POST"])
+def create_connection():
+    parameters = pika.ConnectionParameters(
+        host=BROKER_ADDRESS,
+        heartbeat=600,
+        blocked_connection_timeout=300
+    )
+    for _ in range(MAX_RETRIES):
+        try:
+            return pika.BlockingConnection(parameters)
+        except pika.exceptions.AMQPConnectionError:
+            print(f"failed to connect to RabbitMQ, retrying in {RETRY_DELAY} seconds...")
+            time.sleep(RETRY_DELAY)
+    raise Exception(f"Failed to connect to RabbitMQ after multiple retries ({MAX_RETRIES})")
+
+
 def index():
     """
-    Receives messages from a push subscription from Pub/Sub.
-    Parses the message, and inserts it into BigQuery.
+    Ensures the queue is listening to the exchange and then starts consuming work
     """
-    event = None
-    # Check request for JSON
-    if not request.is_json:
-        raise Exception("Expecting JSON payload")
-    envelope = request.get_json()
+    global connection, channel
+    print("creating connection to broker...")
+    connection = create_connection()
+    print("connected...")
+    channel = connection.channel()
+    exchange = 'fk_events'
+    channel.exchange_declare(exchange=exchange, exchange_type='direct')
+    result = channel.queue_declare(queue='fk_work_github', exclusive=False)
+    queue_name = result.method.queue
+    channel.queue_bind(exchange=exchange, queue=queue_name, routing_key='github')
+    print(' [*] Waiting for github work in the queue. Press CTRL+C to exit')
+    channel.basic_consume(
+        queue=queue_name, on_message_callback=consume, auto_ack=False
+    )
+    try:
+        channel.start_consuming()
+    except pika.exceptions.ConnectionClosedByBroker:
+        print("Connection was closed by the broker.")
+        channel.stop_consuming()
+        connection.close()
+    except pika.exceptions.AMQPChannelError:
+        print("Caught a channel error.")
+        channel.stop_consuming()
+        connection.close()
+    except KeyboardInterrupt:
+        print("CTRL+C detected, stopping...")
+        channel.stop_consuming()
+        connection.close()
+    except Exception as e:
+        print(f"an unexpected error type={type(e)} occurred: {e}")
+        import traceback
+        traceback.print_exc()
+        channel.stop_consuming()
+        connection.close()
 
-    # Check that message is a valid pub/sub message
-    if "message" not in envelope:
-        raise Exception("Not a valid Pub/Sub Message")
-    msg = envelope["message"]
+
+def consume(ch: BlockingChannel, method: Basic.Deliver, properties: Properties, body: bytes):
+    event = None
+    msg = json.loads(body)
 
     if "attributes" not in msg:
-        raise Exception("Missing pubsub attributes")
+        raise Exception("Missing additional attributes")
 
     try:
         attr = msg["attributes"]
 
         # Header Event info
         if "headers" in attr:
-            headers = json.loads(attr["headers"])
+            headers = attr["headers"]
 
             # Process Github Events
             if "X-Github-Event" in headers:
@@ -59,13 +111,14 @@ def index():
     except Exception as e:
         entry = {
                 "severity": "WARNING",
-                "msg": "Data not saved to BigQuery",
+                "msg": "Data not saved to database",
                 "errors": str(e),
-                "json_payload": envelope
+                "json_payload": msg
             }
         print(json.dumps(entry))
 
-    return "", 204
+    ch.basic_ack(delivery_tag=method.delivery_tag, multiple=False)
+    print(f'finished processing message with id={msg["message_id"]}')
 
 
 def process_github_event(headers, msg):
@@ -84,7 +137,7 @@ def process_github_event(headers, msg):
     if event_type not in types:
         raise Exception("Unsupported GitHub event: '%s'" % event_type)
 
-    metadata = json.loads(base64.b64decode(msg["data"]).decode("utf-8").strip())
+    metadata = msg
 
     if event_type == "push":
         time_created = metadata["head_commit"]["timestamp"]
@@ -147,8 +200,4 @@ def process_github_event(headers, msg):
 
 
 if __name__ == "__main__":
-    PORT = int(os.getenv("PORT")) if os.getenv("PORT") else 8080
-
-    # This is used when running locally. Gunicorn is used to run the
-    # application on Cloud Run. See entrypoint in Dockerfile.
-    app.run(host="127.0.0.1", port=PORT, debug=True)
+    index()
