@@ -30,7 +30,7 @@ services:
     environment:
       FK_BROKER_ADDRESS: rabbit
       FK_TOKEN: changeme
-      FK_GITHUB_SECRET: changme
+      FK_GITHUB_SECRET: changeme
       PORT: 8080
     ports:
       - "8000:8080"
@@ -43,8 +43,25 @@ services:
       FK_DB_HOST: db
       FK_DB_PW: fourkeys
       FK_DB_USER: fourkeys
-    volumes:
-      - ./shared:/app/shared
+    depends_on:
+      - rabbit
+      - db
+    #volumes: # uncomment to test changes in shared
+    #  - ./shared:/app/shared
+  github-parser:
+    container_name: fk-github-parser
+    build:
+      context: workers/github-parser
+    environment:
+      FK_BROKER_ADDRESS: rabbit
+      FK_DB_HOST: db
+      FK_DB_PW: fourkeys
+      FK_DB_USER: fourkeys
+    depends_on:
+      - rabbit
+      - db
+    #volumes: # uncomment to test changes in shared
+    #  - ./shared:/app/shared
   grafana:
     container_name: fk-grafana
     build:
