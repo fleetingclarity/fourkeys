@@ -38,12 +38,16 @@ def insert_row_into_events_raw(event):
         connection = mysql.connector.connect(**config)
 
         if is_unique(connection, 'events_raw', event["signature"]):
+            # first check that we're inserting a string and not a python dict
+            if type(event['metadata']) is not str:
+                event['metadata'] = json.dumps(event['metadata'])
+
             # Insert row
             row_to_insert = [
                 (
                     event["id"],
                     event["event_type"],
-                    json.dumps(event["metadata"]),
+                    event["metadata"],
                     event["time_created"],
                     event["signature"],
                     event["msg_id"],
