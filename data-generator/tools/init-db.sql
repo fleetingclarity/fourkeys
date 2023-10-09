@@ -217,10 +217,10 @@ FROM
                 WHEN source LIKE 'pagerduty%' THEN JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.event.occurred_at'))
             END
         ) AS time_resolved,
-        REGEXP_SUBSTR(metadata, 'root cause: ([[:alnum:]]*)') as root_cause,
+        REGEXP_REPLACE(metadata, '.*root cause:\\s*([^\\s][^\\W]+).*','\\1') as root_cause,
         CASE
-            WHEN source LIKE 'github%' THEN JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.issue.labels')) LIKE '%"name":"Incident"%'
-            WHEN source LIKE 'gitlab%' THEN JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.object_attributes.labels')) LIKE '%"title":"Incident"%'
+            WHEN source LIKE 'github%' THEN JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.issue.labels')) LIKE '%"name":_"Incident"%'
+            WHEN source LIKE 'gitlab%' THEN JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.object_attributes.labels')) LIKE '%"title":_"Incident"%'
             WHEN source LIKE 'pagerduty%' THEN TRUE
         END AS bug
     FROM four_keys.events_raw
