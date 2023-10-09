@@ -12,16 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
    name='shared',
    version='1.0',
    description='Shared functions for the Four Keys pipeline',
-   url='git@github.com:four-keys-playground.git#egg=shared&subdirectory=shared',
-   author='Google Inc.',
+   url='git@github.com:fleetingclarity/fourkeys.git#egg=shared&subdirectory=shared',
+   author='fleetingclarity',
+   author_email='fleetingclarity@proton.me',
    license='Apache-2.0',
-   py_modules=['shared'],
-   install_requires=['mysql-connector-python'],
+   install_requires=['mysql-connector-python', 'pika'],
+   packages=find_packages(),
    zip_safe=False
 )
