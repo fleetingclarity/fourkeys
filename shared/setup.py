@@ -23,6 +23,6 @@ setup(
    author_email='fleetingclarity@proton.me',
    license='Apache-2.0',
    install_requires=['mysql-connector-python', 'pika'],
-   packages=find_packages(),
+   packages=find_packages(include=["shared*"]),
    zip_safe=False
 )
