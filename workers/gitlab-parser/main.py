@@ -17,72 +17,25 @@ import os
 import json
 import time
 
-from pika.amqp_object import Properties
 from pika.adapters.blocking_connection import BlockingChannel
-from pika.exceptions import AMQPConnectionError
-from pika.channel import Channel
-from pika.spec import Basic
 
 import shared
+import rabbit
+from pika.amqp_object import Properties
+from pika.spec import Basic
 
 import pika
 
 BROKER_ADDRESS = os.environ.get('FK_BROKER_ADDRESS')
 
-MAX_RETRIES = 5
-RETRY_DELAY = 5
-
-
-def create_connection():
-    parameters = pika.ConnectionParameters(
-        host=BROKER_ADDRESS,
-        heartbeat=600,
-        blocked_connection_timeout=300
-    )
-    for _ in range(MAX_RETRIES):
-        try:
-            return pika.BlockingConnection(parameters)
-        except pika.exceptions.AMQPConnectionError:
-            print(f"failed to connect to RabbitMQ, retrying in {RETRY_DELAY} seconds...")
-            time.sleep(RETRY_DELAY)
-    raise Exception(f"Failed to connect to RabbitMQ after multiple retries ({MAX_RETRIES})")
-
 
 def index():
-    """
-    Ensures the queue is listening to the exchange and then starts consuming work
-    """
-    connection = create_connection()
-    channel = connection.channel()
-    exchange = 'fk_events'
-    channel.exchange_declare(exchange=exchange, exchange_type='direct')
-    result = channel.queue_declare(queue='fk_work_gitlab', exclusive=False)
-    queue_name = result.method.queue
-    channel.queue_bind(exchange=exchange, queue=queue_name, routing_key='gitlab')
-    print(' [*] Waiting for work in the queue. Press CTRL+C to exit')
-    channel.basic_consume(
-        queue=queue_name, on_message_callback=consume, auto_ack=False
-    )
-    try:
-        channel.start_consuming()
-    except pika.exceptions.ConnectionClosedByBroker:
-        print("Connection was closed by the broker.")
-        channel.stop_consuming()
-        connection.close()
-    except pika.exceptions.AMQPChannelError:
-        print("Caught a channel error.")
-        channel.stop_consuming()
-        connection.close()
-    except KeyboardInterrupt:
-        print("CTRL+C detected, stopping...")
-        channel.stop_consuming()
-        connection.close()
-    except Exception as e:
-        print(f"an unexpected error type={type(e)} occurred: {e}")
-        import traceback
-        traceback.print_exc()
-        channel.stop_consuming()
-        connection.close()
+    connector = rabbit.RabbitMQConnector(broker_address=BROKER_ADDRESS,
+                                         exchange_name='fk_events',
+                                         queue_name='fk_work_gitlab',
+                                         routing_key='gitlab')
+    connector.setup()
+    connector.start_consuming(callback=consume)
 
 
 def consume(ch: BlockingChannel, method: Basic.Deliver, properties: Properties, body: bytes):
