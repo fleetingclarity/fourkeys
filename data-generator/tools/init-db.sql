@@ -66,7 +66,7 @@ GROUP BY 1,2,3,4;
 
 DELIMITER //
 
-CREATE FUNCTION json2array(json TEXT) RETURNS TEXT
+CREATE OR REPLACE FUNCTION json2array(json TEXT) RETURNS TEXT
 BEGIN
     DECLARE idx INT DEFAULT 1;
     DECLARE result TEXT DEFAULT '';
@@ -77,7 +77,7 @@ BEGIN
 
     WHILE idx <= jsonLength DO
         SET element = JSON_EXTRACT(json, CONCAT('$[', idx - 1, ']'));
-        SET result = CONCAT(result, ',', JSON_QUOTE(element));
+        SET result = CONCAT(result, ',', element);
         SET idx = idx + 1;
     END WHILE;
 
@@ -157,7 +157,7 @@ JOIN JSON_TABLE(
 ) AS jt ON jt.name = 'gitrevision';
 
 -- put the individual system view together into one view
-CREATE OR REPLACE VIEW deployments AS
+CREATE OR REPLACE VIEW deploys AS
 SELECT
     source,
     deploy_id,
@@ -185,6 +185,53 @@ SELECT
     main_commit,
     NULL AS additional_commits
 FROM deploys_circleci_view;
+
+CREATE OR REPLACE VIEW changes_raw AS
+SELECT
+    id,
+    metadata as change_metadata
+from events_raw;
+
+CREATE OR REPLACE VIEW deployment_changes AS
+
+WITH RECURSIVE numbers AS (
+    SELECT 1 AS n
+    UNION ALL
+    SELECT n + 1 FROM numbers WHERE n < 100  -- Assuming a max of 100 elements in the array
+)
+
+SELECT
+    d.source,
+    d.deploy_id,
+    d.time_created,
+    d.main_commit,
+    cr.change_metadata,
+    json2array(JSON_EXTRACT(cr.change_metadata, '$.commits')) as array_commits,
+    JSON_UNQUOTE(JSON_EXTRACT(cr.change_metadata, CONCAT('$.commits[', numbers.n - 1, ']'))) as commit_element
+FROM deploys d
+JOIN changes_raw cr ON cr.id = d.main_commit
+JOIN numbers ON CHAR_LENGTH(cr.change_metadata)
+              - CHAR_LENGTH(REPLACE(cr.change_metadata, ',', '')) >= numbers.n - 1;  -- This condition ensures we don't exceed the number of elements in the array
+
+CREATE OR REPLACE VIEW deployments AS
+WITH RECURSIVE numbers AS (
+    SELECT 1 AS position
+    UNION ALL
+    SELECT position + 1
+    FROM numbers
+    WHERE position < 100  -- Assuming a maximum of 100 commits in the array. Adjust as necessary.
+)
+
+SELECT
+    dc.source,
+    dc.deploy_id,
+    dc.time_created,
+    dc.main_commit,
+    GROUP_CONCAT(DISTINCT JSON_UNQUOTE(JSON_EXTRACT(dc.array_commits, CONCAT('$[', numbers.position - 1, '].id')))) AS changes
+FROM deployment_changes dc
+JOIN numbers ON CHAR_LENGTH(dc.array_commits)
+               - CHAR_LENGTH(REPLACE(dc.array_commits, '{', '')) >= numbers.position
+GROUP BY 1,2,3,4;
 
 CREATE OR REPLACE VIEW incidents AS
 SELECT
@@ -229,4 +276,3 @@ FROM
 LEFT JOIN deployments AS root ON root.main_commit = issue.root_cause
 WHERE issue.bug = TRUE
 GROUP BY issue.source, issue.incident_id, issue.time_created, issue.time_resolved;
-
