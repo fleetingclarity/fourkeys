@@ -16,15 +16,29 @@ import hashlib
 import json
 import os
 
-import mysql.connector
-from mysql.connector import Error
+import psycopg2
+from psycopg2 import Error
 
 config = {
     'host': os.environ.get('FK_DB_HOST'),
     'user': os.environ.get('FK_DB_USER'),
     'password': os.environ.get('FK_DB_PW'),
+    'port': os.environ.get('FK_DB_PORT', 5432),
     'database': 'four_keys'
 }
+
+
+def get_connection():
+    try:
+        return psycopg2.connect(
+            database=config['host'],
+            user=config['user'],
+            password=config['password'],
+            host=config['host'],
+            port=config['port']
+        )
+    except:
+        return False
 
 
 def insert_row_into_events_raw(event):
@@ -35,7 +49,7 @@ def insert_row_into_events_raw(event):
     cursor = None
 
     try:
-        connection = mysql.connector.connect(**config)
+        connection = get_connection()
 
         if is_unique(connection, 'events_raw', event["signature"]):
             # first check that we're inserting a string and not a python dict
@@ -76,7 +90,7 @@ def insert_row_into_events_raw(event):
     finally:
         if cursor:
             cursor.close()
-        if connection and connection.is_connected():
+        if connection:
             connection.close()
 
 
@@ -87,7 +101,7 @@ def insert_row_into_events_enriched(event):
     connection = None
     cursor = None
     try:
-        connection = mysql.connector.connect(**config)
+        connection = get_connection()
         dataset_id = "four_keys"
 
         if is_unique(connection, 'events_enriched', event["events_raw_signature"]):
@@ -121,7 +135,7 @@ def insert_row_into_events_enriched(event):
     finally:
         if cursor:
             cursor.close()
-        if connection and connection.is_connected():
+        if connection:
             connection.close()
 
 
