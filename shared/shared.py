@@ -24,7 +24,7 @@ config = {
     'user': os.environ.get('FK_DB_USER'),
     'password': os.environ.get('FK_DB_PW'),
     'port': os.environ.get('FK_DB_PORT', 5432),
-    'database': 'four_keys'
+    'database': 'fourkeys'
 }
 
 
