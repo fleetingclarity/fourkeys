@@ -23,7 +23,7 @@ setup(
    author_email='fleetingclarity@proton.me',
    license='Apache-2.0',
    py_modules=['shared', 'rabbit'],
-   install_requires=['mysql-connector-python', 'pika'],
+   install_requires=['psycopg2-binary', 'pika'],
    packages=find_packages(include=["shared*"]),
    zip_safe=False
 )
