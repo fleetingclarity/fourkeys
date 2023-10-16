@@ -11,18 +11,6 @@ services:
       - "15672:15672"
       # ?
       - "5672:5672"
-  db:
-    container_name: fk-database
-    image: mariadb
-    environment:
-      MARIADB_ROOT_PASSWORD: rooter
-      MARIADB_DATABASE: four_keys
-      MARIADB_USER: fourkeys
-      MARIADB_PASSWORD: fourkeys
-    volumes:
-      - ./data-generator/tools/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
-    ports:
-      - "3306:3306"
   handler:
     container_name: fk-event-handler
     build:
@@ -45,7 +33,7 @@ services:
       FK_DB_USER: fourkeys
     depends_on:
       - rabbit
-      - db
+      - pg
     #volumes: # uncomment to test changes in shared
     #  - ./shared:/app/shared
   github-parser:
@@ -54,12 +42,12 @@ services:
       context: workers/github-parser
     environment:
       FK_BROKER_ADDRESS: rabbit
-      FK_DB_HOST: db
+      FK_DB_HOST: pg
       FK_DB_PW: fourkeys
       FK_DB_USER: fourkeys
     depends_on:
       - rabbit
-      - db
+      - pg
     #volumes: # uncomment to test changes in shared
     #  - ./shared:/app/shared
   grafana:
@@ -71,3 +59,14 @@ services:
       FK_DB_PASSWORD: fourkeys
     ports:
       - "3000:3000"
+  pg:
+    image: postgres
+    container_name: fk-pg
+    environment:
+      POSTGRES_PASSWORD: fourkeys
+      POSTGRES_USER: fourkeys
+      POSTGRES_DB: fourkeys
+    volumes:
+      - ./data-generator/tools/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    ports:
+      - "5432:5432"
