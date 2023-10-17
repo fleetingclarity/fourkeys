@@ -28,7 +28,7 @@ services:
       context: workers/gitlab-parser
     environment:
       FK_BROKER_ADDRESS: rabbit
-      FK_DB_HOST: db
+      FK_DB_HOST: pg
       FK_DB_PW: fourkeys
       FK_DB_USER: fourkeys
     depends_on:
