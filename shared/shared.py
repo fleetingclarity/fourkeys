@@ -30,8 +30,9 @@ config = {
 
 def get_connection():
     try:
+        print(f'connecting to database={config["database"]} at host={config["host"]} as user={config["user"]}')
         return psycopg2.connect(
-            database=config['host'],
+            database=config['database'],
             user=config['user'],
             password=config['password'],
             host=config['host'],
