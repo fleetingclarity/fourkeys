@@ -142,13 +142,14 @@ def insert_row_into_events_enriched(event):
 
 def is_unique(connection, table, signature):
     cursor = connection.cursor()
-    sql = f"SELECT signature FROM four_keys.{table} WHERE {SIGNATURE_FIELDS[table]} = '{signature}';"
+    sql = f"SELECT signature FROM {table} WHERE {SIGNATURE_FIELDS[table]} = '{signature}';"
     result = None
     try:
         cursor.execute(sql)
         result = cursor.fetchall()
     except Error as e:
         print(f'stuff about the failure: {e}')
+        connection.rollback()
     finally:
         if cursor:
             cursor.close()
