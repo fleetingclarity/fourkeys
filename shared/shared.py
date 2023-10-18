@@ -15,16 +15,40 @@
 import hashlib
 import json
 import os
+import time
 
-import mysql.connector
-from mysql.connector import Error
+import psycopg2
+from psycopg2 import Error, OperationalError
 
 config = {
     'host': os.environ.get('FK_DB_HOST'),
     'user': os.environ.get('FK_DB_USER'),
     'password': os.environ.get('FK_DB_PW'),
-    'database': 'four_keys'
+    'port': os.environ.get('FK_DB_PORT', 5432),
+    'database': 'fourkeys'
 }
+
+MAX_RETRIES = 5
+BASE_WAIT_TIME = 2  # in seconds
+
+
+def get_connection():
+    retries = 0
+    while retries < MAX_RETRIES:
+        try:
+            return psycopg2.connect(
+                database=config['database'],
+                user=config['user'],
+                password=config['password'],
+                host=config['host'],
+                port=config['port']
+            )
+        except OperationalError as e:
+            retries += 1
+            print(f'Failed to connect, attempt {retries} of {MAX_RETRIES}. Error: {e}')
+            time.sleep(BASE_WAIT_TIME * (2 ** retries))  # exponential backoff
+            continue
+    raise Exception("Unable to establish database connection after multiple retries.")
 
 
 def insert_row_into_events_raw(event):
@@ -35,7 +59,7 @@ def insert_row_into_events_raw(event):
     cursor = None
 
     try:
-        connection = mysql.connector.connect(**config)
+        connection = get_connection()
 
         if is_unique(connection, 'events_raw', event["signature"]):
             # first check that we're inserting a string and not a python dict
@@ -76,7 +100,7 @@ def insert_row_into_events_raw(event):
     finally:
         if cursor:
             cursor.close()
-        if connection and connection.is_connected():
+        if connection:
             connection.close()
 
 
@@ -87,7 +111,7 @@ def insert_row_into_events_enriched(event):
     connection = None
     cursor = None
     try:
-        connection = mysql.connector.connect(**config)
+        connection = get_connection()
         dataset_id = "four_keys"
 
         if is_unique(connection, 'events_enriched', event["events_raw_signature"]):
@@ -121,19 +145,20 @@ def insert_row_into_events_enriched(event):
     finally:
         if cursor:
             cursor.close()
-        if connection and connection.is_connected():
+        if connection:
             connection.close()
 
 
 def is_unique(connection, table, signature):
     cursor = connection.cursor()
-    sql = f"SELECT signature FROM four_keys.{table} WHERE {SIGNATURE_FIELDS[table]} = '{signature}';"
+    sql = f"SELECT signature FROM {table} WHERE {SIGNATURE_FIELDS[table]} = '{signature}';"
     result = None
     try:
         cursor.execute(sql)
         result = cursor.fetchall()
     except Error as e:
         print(f'stuff about the failure: {e}')
+        connection.rollback()
     finally:
         if cursor:
             cursor.close()

@@ -30,8 +30,8 @@
   "panels": [
     {
       "datasource": {
-        "type": "four-keys-mariadb",
-        "uid": "P900178F5D82CFA7C"
+        "type": "four-keys-postgresql",
+        "uid": "P31C2C9D15B443B1D"
       },
       "fieldConfig": {
         "defaults": {
@@ -107,15 +107,15 @@
       "targets": [
         {
           "datasource": {
-            "type": "four-keys-mariadb",
-            "uid": "P900178F5D82CFA7C"
+            "type": "four-keys-postgresql",
+            "uid": "P31C2C9D15B443B1D"
           },
           "editorMode": "code",
           "format": "time_series",
           "location": "US",
           "project": "gglobo-deployment-frq-hdg-prd",
           "rawQuery": true,
-          "rawSql": "SELECT\n    CAST(day AS DATETIME) as time,\n    IFNULL(AVG(time_diff)/60, 0) AS median_time_to_change\nFROM (\n    SELECT\n        d.time_created AS day,\n        d.deploy_id,\n        IF(\n            TIMESTAMPDIFF(MINUTE, c.time_created, d.time_created) > 0, \n            TIMESTAMPDIFF(MINUTE, c.time_created, d.time_created), \n            NULL\n        ) AS time_diff,\n        ROW_NUMBER() OVER(PARTITION BY DATE(d.time_created) ORDER BY TIMESTAMPDIFF(MINUTE, c.time_created, d.time_created)) AS rn_asc,\n        ROW_NUMBER() OVER(PARTITION BY DATE(d.time_created) ORDER BY TIMESTAMPDIFF(MINUTE, c.time_created, d.time_created) DESC) AS rn_desc,\n        COUNT(*) OVER(PARTITION BY DATE(d.time_created)) AS cnt\n    FROM deployments d\n    LEFT JOIN changes c ON d.main_commit = c.change_id\n) AS subquery\nWHERE rn_asc BETWEEN cnt/2 AND cnt/2 + 1 OR rn_desc BETWEEN cnt/2 AND cnt/2 + 1\nGROUP BY day\nORDER BY day;\n",
+          "rawSql": "SELECT\n    day::DATE as time,\n    COALESCE(AVG(time_diff)/60, 0) AS median_lead_time_for_changes\nFROM (\n    SELECT\n        c.time_created::DATE AS day,\n        d.deploy_id,\n        CASE\n            WHEN EXTRACT(EPOCH FROM (d.time_created - c.time_created))/60 > 0 THEN \n                EXTRACT(EPOCH FROM (d.time_created - c.time_created))/60\n            ELSE \n                NULL\n        END AS time_diff,\n        ROW_NUMBER() OVER(PARTITION BY c.time_created::DATE ORDER BY EXTRACT(EPOCH FROM (d.time_created - c.time_created))/60) AS rn_asc,\n        ROW_NUMBER() OVER(PARTITION BY c.time_created::DATE ORDER BY EXTRACT(EPOCH FROM (d.time_created - c.time_created))/60 DESC) AS rn_desc,\n        COUNT(*) OVER(PARTITION BY c.time_created::DATE) AS cnt\n    FROM changes c\n    LEFT JOIN deployments d ON c.change_id = d.main_commit\n) AS subquery\nWHERE rn_asc BETWEEN cnt/2 AND cnt/2 + 1 OR rn_desc BETWEEN cnt/2 AND cnt/2 + 1\nGROUP BY day\nORDER BY day;",
           "refId": "A",
           "sql": {
             "columns": [
@@ -141,8 +141,8 @@
     },
     {
       "datasource": {
-        "type": "four-keys-mariadb",
-        "uid": "P900178F5D82CFA7C"
+        "type": "four-keys-postgresql",
+        "uid": "P31C2C9D15B443B1D"
       },
       "description": "",
       "fieldConfig": {
@@ -214,15 +214,15 @@
       "targets": [
         {
           "datasource": {
-            "type": "four-keys-mariadb",
-            "uid": "P900178F5D82CFA7C"
+            "type": "four-keys-postgresql",
+            "uid": "P31C2C9D15B443B1D"
           },
           "editorMode": "code",
           "format": "table",
           "location": "US",
           "project": "gglobo-deployment-frq-hdg-prd",
           "rawQuery": true,
-          "rawSql": "SELECT \n CASE\n  WHEN median_time_to_change < 24 * 60 THEN 'One day'\n  WHEN median_time_to_change < 168 * 60 THEN 'One week'\n  WHEN median_time_to_change < 730 * 60 THEN 'One month'\n  WHEN median_time_to_change < 730 * 6 * 60 THEN 'Six months'\n  ELSE 'One year'\n END AS lead_time_to_change\nFROM (\n SELECT\n  IFNULL(AVG(diff_minutes), 0) AS median_time_to_change\n FROM (\n   SELECT\n   TIMESTAMPDIFF(MINUTE, c.time_created, d.time_created) AS diff_minutes,\n   IF(@rownum:=@rownum+1, @rownum, @rownum) AS row_num\n   FROM deployments d\n   LEFT JOIN changes c ON d.main_commit = c.change_id\n   CROSS JOIN (SELECT @rownum:=0) r\n   WHERE d.time_created > DATE_SUB(CURRENT_DATE, INTERVAL 3 MONTH)\n   ORDER BY diff_minutes\n ) AS diffs\n WHERE row_num BETWEEN FLOOR((@rownum+1)/2) AND CEIL((@rownum+1)/2)\n) AS subquery;\n",
+          "rawSql": "WITH diffs AS (\n    SELECT\n        EXTRACT(EPOCH FROM (d.time_created - c.time_created))/60 AS diff_minutes,\n        ROW_NUMBER() OVER(ORDER BY EXTRACT(EPOCH FROM (d.time_created - c.time_created))/60) AS row_num,\n        COUNT(*) OVER() AS total_count\n    FROM deployments d\n    LEFT JOIN changes c ON d.main_commit = c.change_id\n    WHERE d.time_created > CURRENT_DATE - INTERVAL '3 MONTH'\n    ORDER BY diff_minutes\n)\n\nSELECT \n    CASE\n        WHEN median_time_to_change < 24 * 60 THEN 'One day'\n        WHEN median_time_to_change < 168 * 60 THEN 'One week'\n        WHEN median_time_to_change < 730 * 60 THEN 'One month'\n        WHEN median_time_to_change < 730 * 6 * 60 THEN 'Six months'\n        ELSE 'One year'\n    END AS lead_time_to_change\nFROM (\n    SELECT\n        COALESCE(AVG(diff_minutes), 0) AS median_time_to_change\n    FROM diffs\n    WHERE row_num BETWEEN FLOOR((total_count+1)::NUMERIC/2) AND CEIL((total_count+1)::NUMERIC/2)\n) AS subquery;\n",
           "refId": "A",
           "sql": {
             "columns": [
@@ -248,8 +248,8 @@
     },
     {
       "datasource": {
-        "type": "four-keys-mariadb",
-        "uid": "P900178F5D82CFA7C"
+        "type": "four-keys-postgresql",
+        "uid": "P31C2C9D15B443B1D"
       },
       "fieldConfig": {
         "defaults": {
@@ -325,8 +325,8 @@
       "targets": [
         {
           "datasource": {
-            "type": "four-keys-mariadb",
-            "uid": "P900178F5D82CFA7C"
+            "type": "four-keys-postgresql",
+            "uid": "P31C2C9D15B443B1D"
           },
           "editorMode": "code",
           "format": "time_series",
@@ -359,8 +359,8 @@
     },
     {
       "datasource": {
-        "type": "four-keys-mariadb",
-        "uid": "P900178F5D82CFA7C"
+        "type": "four-keys-postgresql",
+        "uid": "P31C2C9D15B443B1D"
       },
       "description": "",
       "fieldConfig": {
@@ -429,15 +429,15 @@
       "targets": [
         {
           "datasource": {
-            "type": "four-keys-mariadb",
-            "uid": "P900178F5D82CFA7C"
+            "type": "four-keys-postgresql",
+            "uid": "P31C2C9D15B443B1D"
           },
           "editorMode": "code",
           "format": "table",
           "location": "US",
           "project": "gglobo-deployment-frq-hdg-prd",
           "rawQuery": true,
-          "rawSql": "WITH RECURSIVE last_three_months AS (\n    SELECT DATE_SUB(CURRENT_DATE, INTERVAL 3 MONTH) AS day\n    UNION ALL\n    SELECT DATE_ADD(day, INTERVAL 1 DAY)\n    FROM last_three_months\n    WHERE day < CURRENT_DATE AND day > (SELECT DATE(MIN(time_created)) FROM events_raw)\n),\n\ndeployments_per_day AS (\n    SELECT DATE(time_created) AS deploy_day, COUNT(DISTINCT deploy_id) AS daily_deploys\n    FROM deployments\n    GROUP BY deploy_day\n),\n\ndeployments_per_week AS (\n    SELECT WEEK(last_three_months.day) AS week, SUM(daily_deploys) > 0 AS week_deployed, COUNT(DISTINCT last_three_months.day) AS days_deployed\n    FROM last_three_months\n    LEFT JOIN deployments_per_day ON deployments_per_day.deploy_day = last_three_months.day\n    GROUP BY week\n),\n\nmedian_calc AS (\n    SELECT days_deployed, week_deployed,\n           ROW_NUMBER() OVER (ORDER BY days_deployed) AS rn_days,\n           ROW_NUMBER() OVER (ORDER BY week_deployed) AS rn_weeks,\n           COUNT(*) OVER () AS cnt\n    FROM deployments_per_week\n)\n\nSELECT\n    CASE \n        WHEN AVG(days_deployed) OVER (PARTITION BY CASE WHEN rn_days BETWEEN cnt/2 AND cnt/2 + 1 THEN 1 ELSE 0 END) >= 3 THEN 'Daily'\n        WHEN AVG(week_deployed) OVER (PARTITION BY CASE WHEN rn_weeks BETWEEN cnt/2 AND cnt/2 + 1 THEN 1 ELSE 0 END) >= 1 THEN 'Weekly'\n        ELSE 'Yearly'\n    END AS deployment_frequency\nFROM median_calc\nLIMIT 1;\n",
+          "rawSql": "WITH RECURSIVE last_three_months AS (\n    SELECT CURRENT_DATE - INTERVAL '3 MONTH' AS day\n    UNION ALL\n    SELECT day + INTERVAL '1 DAY'\n    FROM last_three_months\n    WHERE day < CURRENT_DATE AND day > (SELECT DATE(MIN(time_created)) FROM events_raw)\n),\n\ndeployments_per_day AS (\n    SELECT DATE(time_created) AS deploy_day, COUNT(DISTINCT deploy_id) AS daily_deploys\n    FROM deployments\n    GROUP BY deploy_day\n),\n\ndeployments_per_week AS (\n    SELECT EXTRACT(WEEK FROM last_three_months.day)::INT AS week, \n           SUM(daily_deploys) > 0 AS week_deployed, \n           COUNT(DISTINCT last_three_months.day) AS days_deployed\n    FROM last_three_months\n    LEFT JOIN deployments_per_day ON deployments_per_day.deploy_day = last_three_months.day\n    GROUP BY week\n),\n\nmedian_calc AS (\n    SELECT days_deployed, \n           CASE WHEN week_deployed THEN 1 ELSE 0 END AS week_deployed_int,\n           ROW_NUMBER() OVER (ORDER BY days_deployed) AS rn_days,\n           ROW_NUMBER() OVER (ORDER BY CASE WHEN week_deployed THEN 1 ELSE 0 END) AS rn_weeks,\n           COUNT(*) OVER () AS cnt\n    FROM deployments_per_week\n)\n\nSELECT\n    CASE \n        WHEN AVG(days_deployed) FILTER (WHERE rn_days BETWEEN cnt/2 AND cnt/2 + 1) >= 3 THEN 'Daily'\n        WHEN AVG(week_deployed_int) FILTER (WHERE rn_weeks BETWEEN cnt/2 AND cnt/2 + 1) >= 1 THEN 'Weekly'\n        ELSE 'Yearly'\n    END AS deployment_frequency\nFROM median_calc\nLIMIT 1;\n",
           "refId": "A",
           "sql": {
             "columns": [
@@ -463,8 +463,8 @@
     },
     {
       "datasource": {
-        "type": "four-keys-mariadb",
-        "uid": "P900178F5D82CFA7C"
+        "type": "four-keys-postgresql",
+        "uid": "P31C2C9D15B443B1D"
       },
       "fieldConfig": {
         "defaults": {
@@ -540,15 +540,15 @@
       "targets": [
         {
           "datasource": {
-            "type": "four-keys-mariadb",
-            "uid": "P900178F5D82CFA7C"
+            "type": "four-keys-postgresql",
+            "uid": "P31C2C9D15B443B1D"
           },
           "editorMode": "code",
           "format": "time_series",
           "location": "US",
           "project": "gglobo-deployment-frq-hdg-prd",
           "rawQuery": true,
-          "rawSql": "WITH incidents_sorted AS (\n    SELECT \n        DATE(time_created) AS day,\n        TIMESTAMPDIFF(HOUR, time_created, time_resolved) AS hours_to_restore,\n        ROW_NUMBER() OVER (PARTITION BY DATE(time_created) ORDER BY TIMESTAMPDIFF(HOUR, time_created, time_resolved)) AS rn_asc,\n        ROW_NUMBER() OVER (PARTITION BY DATE(time_created) ORDER BY TIMESTAMPDIFF(HOUR, time_created, time_resolved) DESC) AS rn_desc,\n        COUNT(*) OVER (PARTITION BY DATE(time_created)) AS cnt\n    FROM incidents\n    WHERE time_resolved IS NOT NULL\n)\n\nSELECT \n    day as time,\n    CASE \n        WHEN cnt % 2 = 1 THEN \n            AVG(hours_to_restore) OVER (PARTITION BY day, CASE WHEN rn_asc = rn_desc THEN 1 ELSE 0 END)\n        ELSE \n            (AVG(hours_to_restore) OVER (PARTITION BY day, CASE WHEN rn_asc = rn_desc THEN 1 ELSE 0 END) +\n             AVG(hours_to_restore) OVER (PARTITION BY day, CASE WHEN rn_asc = rn_desc - 1 THEN 1 ELSE 0 END)) / 2\n    END AS daily_med_time_to_restore\nFROM incidents_sorted\nORDER BY time;",
+          "rawSql": "WITH incidents_sorted AS (\n    SELECT \n        time_created::DATE AS day,\n        EXTRACT(EPOCH FROM (time_resolved - time_created))/3600 AS hours_to_restore,\n        ROW_NUMBER() OVER (PARTITION BY time_created::DATE ORDER BY EXTRACT(EPOCH FROM (time_resolved - time_created))/3600) AS rn_asc,\n        ROW_NUMBER() OVER (PARTITION BY time_created::DATE ORDER BY EXTRACT(EPOCH FROM (time_resolved - time_created))/3600 DESC) AS rn_desc,\n        COUNT(*) OVER (PARTITION BY time_created::DATE) AS cnt\n    FROM incidents\n    WHERE time_resolved IS NOT NULL\n),\n\nmedians AS (\n    SELECT \n        day,\n        hours_to_restore,\n        rn_asc,\n        rn_desc,\n        cnt,\n        CASE \n            WHEN cnt % 2 = 1 THEN \n                AVG(hours_to_restore) FILTER (WHERE rn_asc = rn_desc) OVER (PARTITION BY day)\n            ELSE \n                AVG(hours_to_restore) FILTER (WHERE rn_asc IN (rn_desc, rn_desc - 1)) OVER (PARTITION BY day)\n        END AS median_value\n    FROM incidents_sorted\n)\n\nSELECT \n    day AS time,\n    AVG(median_value) AS daily_med_time_to_restore\nFROM medians\nGROUP BY day\nORDER BY time;\n",
           "refId": "A",
           "sql": {
             "columns": [
@@ -574,8 +574,8 @@
     },
     {
       "datasource": {
-        "type": "four-keys-mariadb",
-        "uid": "P900178F5D82CFA7C"
+        "type": "four-keys-postgresql",
+        "uid": "P31C2C9D15B443B1D"
       },
       "description": "",
       "fieldConfig": {
@@ -638,7 +638,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "/^med_time_to_resolve$/",
+          "fields": "/^med_time_to_restore$/",
           "values": false
         },
         "textMode": "auto"
@@ -647,15 +647,15 @@
       "targets": [
         {
           "datasource": {
-            "type": "four-keys-mariadb",
-            "uid": "P900178F5D82CFA7C"
+            "type": "four-keys-postgresql",
+            "uid": "P31C2C9D15B443B1D"
           },
           "editorMode": "code",
           "format": "table",
           "location": "US",
           "project": "gglobo-deployment-frq-hdg-prd",
           "rawQuery": true,
-          "rawSql": "WITH incidents_sorted AS (\n    SELECT \n        TIMESTAMPDIFF(HOUR, time_created, time_resolved) AS hours_to_resolve,\n        ROW_NUMBER() OVER (ORDER BY TIMESTAMPDIFF(HOUR, time_created, time_resolved)) AS rn_asc,\n        ROW_NUMBER() OVER (ORDER BY TIMESTAMPDIFF(HOUR, time_created, time_resolved) DESC) AS rn_desc,\n        COUNT(*) OVER () AS cnt\n    FROM incidents\n    WHERE time_resolved IS NOT NULL\n    AND time_created > DATE_SUB(CURRENT_DATE, INTERVAL 3 MONTH)\n)\n\n, median_calc AS (\n    SELECT \n        CASE \n            WHEN cnt % 2 = 1 THEN \n                AVG(hours_to_resolve) OVER (PARTITION BY CASE WHEN rn_asc = rn_desc THEN 1 ELSE 0 END)\n            ELSE \n                (AVG(hours_to_resolve) OVER (PARTITION BY CASE WHEN rn_asc = rn_desc THEN 1 ELSE 0 END) +\n                AVG(hours_to_resolve) OVER (PARTITION BY CASE WHEN rn_asc = rn_desc - 1 THEN 1 ELSE 0 END)) / 2\n        END AS med_time_to_resolve\n    FROM incidents_sorted\n)\n\nSELECT \n    CASE \n        WHEN med_time_to_resolve < 24 THEN \"One day\"\n        WHEN med_time_to_resolve < 168 THEN \"One week\"\n        WHEN med_time_to_resolve < 730 THEN \"One month\"\n        WHEN med_time_to_resolve < 730 * 6 THEN \"Six months\"\n        ELSE \"One year\"\n    END AS med_time_to_resolve\nFROM median_calc\nLIMIT 1;\n",
+          "rawSql": "WITH incidents_sorted AS (\n    SELECT \n        EXTRACT(EPOCH FROM (time_resolved - time_created))/3600 AS hours_to_resolve,\n        ROW_NUMBER() OVER (ORDER BY EXTRACT(EPOCH FROM (time_resolved - time_created))/3600) AS rn_asc,\n        ROW_NUMBER() OVER (ORDER BY EXTRACT(EPOCH FROM (time_resolved - time_created))/3600 DESC) AS rn_desc,\n        COUNT(*) OVER () AS cnt\n    FROM incidents\n    WHERE time_resolved IS NOT NULL\n    AND time_created > CURRENT_DATE - INTERVAL '3 MONTH'\n)\n\n, medians AS (\n    SELECT \n        hours_to_resolve,\n        rn_asc,\n        rn_desc,\n        cnt,\n        CASE \n            WHEN cnt % 2 = 1 THEN \n                AVG(hours_to_resolve) FILTER (WHERE rn_asc = rn_desc) OVER ()\n            ELSE \n                AVG(hours_to_resolve) FILTER (WHERE rn_asc IN (rn_desc, rn_desc - 1)) OVER ()\n        END AS median_value\n    FROM incidents_sorted\n)\n\n, median_calc AS (\n    SELECT \n        AVG(median_value) AS med_time_to_resolve\n    FROM medians\n)\n\nSELECT \n    CASE \n        WHEN med_time_to_resolve < 24 THEN 'One day'\n        WHEN med_time_to_resolve < 168 THEN 'One week'\n        WHEN med_time_to_resolve < 730 THEN 'One month'\n        WHEN med_time_to_resolve < 730 * 6 THEN 'Six months'\n        ELSE 'One year'\n    END AS med_time_to_restore\nFROM median_calc\nLIMIT 1;\n",
           "refId": "A",
           "sql": {
             "columns": [
@@ -681,8 +681,8 @@
     },
     {
       "datasource": {
-        "type": "four-keys-mariadb",
-        "uid": "P900178F5D82CFA7C"
+        "type": "four-keys-postgresql",
+        "uid": "P31C2C9D15B443B1D"
       },
       "fieldConfig": {
         "defaults": {
@@ -757,15 +757,15 @@
       "targets": [
         {
           "datasource": {
-            "type": "four-keys-mariadb",
-            "uid": "P900178F5D82CFA7C"
+            "type": "four-keys-postgresql",
+            "uid": "P31C2C9D15B443B1D"
           },
           "editorMode": "code",
           "format": "time_series",
           "location": "US",
           "project": "gglobo-deployment-frq-hdg-prd",
           "rawQuery": true,
-          "rawSql": "SELECT\n    DATE(d.time_created) as time,\n    IF(COUNT(DISTINCT ch.change_id) = 0, 0, \n       SUM(IF(i.incident_id IS NULL, 0, 1)) / COUNT(DISTINCT d.deploy_id)) as change_fail_rate\nFROM deployments d\nLEFT JOIN changes ch ON d.main_commit = ch.change_id\nLEFT JOIN incidents i ON ch.change_id = JSON_UNQUOTE(JSON_EXTRACT(i.changes, '$[0]'))\nGROUP BY time\nORDER BY time;",
+          "rawSql": "SELECT\n    DATE(d.time_created) as time,\n    CASE \n        WHEN COUNT(DISTINCT ch.change_id) = 0 THEN 0\n        ELSE \n            SUM(CASE WHEN i.incident_id IS NULL THEN 0 ELSE 1 END)::FLOAT / COUNT(DISTINCT d.deploy_id)\n    END as change_fail_rate\nFROM deployments d\nLEFT JOIN changes ch ON d.main_commit = ch.change_id\nLEFT JOIN incidents i ON ch.change_id = (i.changes[1])\nGROUP BY time\nORDER BY time;\n",
           "refId": "A",
           "sql": {
             "columns": [
@@ -791,8 +791,8 @@
     },
     {
       "datasource": {
-        "type": "four-keys-mariadb",
-        "uid": "P900178F5D82CFA7C"
+        "type": "four-keys-postgresql",
+        "uid": "P31C2C9D15B443B1D"
       },
       "description": "",
       "fieldConfig": {
@@ -856,15 +856,15 @@
       "targets": [
         {
           "datasource": {
-            "type": "four-keys-mariadb",
-            "uid": "P900178F5D82CFA7C"
+            "type": "four-keys-postgresql",
+            "uid": "P31C2C9D15B443B1D"
           },
           "editorMode": "code",
           "format": "table",
           "location": "US",
           "project": "gglobo-deployment-frq-hdg-prd",
           "rawQuery": true,
-          "rawSql": "SELECT\n    CASE \n        WHEN change_fail_rate <= 0.15 THEN \"0-15%\"\n        WHEN change_fail_rate < 0.46 THEN \"16-45%\"\n        ELSE \"46-60%\" \n    END AS change_fail_rate\nFROM \n(\n    SELECT\n        IF(COUNT(DISTINCT ch.change_id) = 0, 0, \n           SUM(IF(i.incident_id IS NULL, 0, 1)) / COUNT(DISTINCT d.deploy_id)) AS change_fail_rate\n    FROM deployments d\n    LEFT JOIN changes ch ON d.main_commit = ch.change_id\n    LEFT JOIN incidents i ON ch.change_id = JSON_UNQUOTE(JSON_EXTRACT(i.changes, '$[0]'))\n    WHERE d.time_created > DATE_SUB(CURRENT_DATE, INTERVAL 3 MONTH)\n) AS subquery\nLIMIT 1;\n",
+          "rawSql": "WITH subquery AS (\n    SELECT\n        CASE \n            WHEN COUNT(DISTINCT ch.change_id) = 0 THEN 0\n            ELSE \n                SUM(CASE WHEN i.incident_id IS NULL THEN 0 ELSE 1 END)::FLOAT / COUNT(DISTINCT d.deploy_id)\n        END as change_fail_rate\n    FROM deployments d\n    LEFT JOIN changes ch ON d.main_commit = ch.change_id\n    LEFT JOIN incidents i ON ch.change_id = (i.changes[1])\n    WHERE d.time_created > CURRENT_DATE - INTERVAL '3 MONTH'\n)\n\nSELECT\n    CASE \n        WHEN change_fail_rate <= 0.15 THEN '0-15%'\n        WHEN change_fail_rate < 0.46 THEN '16-45%'\n        ELSE '46-60%' \n    END AS change_fail_rate\nFROM subquery\nLIMIT 1;\n",
           "refId": "A",
           "sql": {
             "columns": [
@@ -897,7 +897,7 @@
     "list": []
   },
   "time": {
-    "from": "2022-08-01T03:00:00.000Z",
+    "from": "now-1y",
     "to": "now"
   },
   "timepicker": {
@@ -929,7 +929,7 @@
   },
   "timezone": "utc",
   "title": "Four Keys",
-  "uid": "yVtwoQ4nk",
+  "uid": "e14a6f0c-69e7-4e44-9576-f0261f1f5ee4",
   "version": 2,
   "weekStart": ""
 }

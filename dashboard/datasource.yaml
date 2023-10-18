@@ -15,14 +15,17 @@
 apiVersion: 1
 
 datasources:
-- name: four-keys-mariadb
-  type: mysql
-  access: proxy
-  jsonData:
-    database: four_keys          # specify your database name here
-  user: "$FK_DB_USER"            # using environment variable for username
+- name: four-keys-postgresql
+  type: postgres
+  url: "pg:5432"
+  user: "fourkeys"
   secureJsonData:
-    password: "$FK_DB_PASSWORD"  # using environment variable for password
-  url: "db:3306"                 # specify your MariaDB host and port, default is docker-compose mariadb service
-  version: 3
-  readOnly: false
+    password: '$FK_DB_PASSWORD'
+  jsonData:
+    database: 'fourkeys'
+    sslmode: 'disable'
+    maxOpenConns: 100
+    maxIdleConns: 100
+    maxIdleConnsAuto: true
+    postgresVersion:
+    timescaledb: false
