@@ -1,2 +1,2 @@
-git+https://github.com/fleetingclarity/fourkeys.git@data-fix#egg=shared&subdirectory=shared
+git+https://github.com/fleetingclarity/fourkeys.git@main#egg=shared&subdirectory=shared
 pika==1.3.2
