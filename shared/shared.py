@@ -15,9 +15,10 @@
 import hashlib
 import json
 import os
+import time
 
 import psycopg2
-from psycopg2 import Error
+from psycopg2 import Error, OperationalError
 
 config = {
     'host': os.environ.get('FK_DB_HOST'),
@@ -27,19 +28,27 @@ config = {
     'database': 'fourkeys'
 }
 
+MAX_RETRIES = 5
+BASE_WAIT_TIME = 2  # in seconds
+
 
 def get_connection():
-    try:
-        print(f'connecting to database={config["database"]} at host={config["host"]} as user={config["user"]}')
-        return psycopg2.connect(
-            database=config['database'],
-            user=config['user'],
-            password=config['password'],
-            host=config['host'],
-            port=config['port']
-        )
-    except:
-        return False
+    retries = 0
+    while retries < MAX_RETRIES:
+        try:
+            return psycopg2.connect(
+                database=config['database'],
+                user=config['user'],
+                password=config['password'],
+                host=config['host'],
+                port=config['port']
+            )
+        except OperationalError as e:
+            retries += 1
+            print(f'Failed to connect, attempt {retries} of {MAX_RETRIES}. Error: {e}')
+            time.sleep(BASE_WAIT_TIME * (2 ** retries))  # exponential backoff
+            continue
+    raise Exception("Unable to establish database connection after multiple retries.")
 
 
 def insert_row_into_events_raw(event):
