@@ -151,7 +151,7 @@ def insert_row_into_events_enriched(event):
 
 def is_unique(connection, table, signature):
     cursor = connection.cursor()
-    sql = f"SELECT signature FROM {table} WHERE {SIGNATURE_FIELDS[table]} = '{signature}';"
+    sql = f"SELECT {SIGNATURE_FIELDS[table]} FROM {table} WHERE {SIGNATURE_FIELDS[table]} = '{signature}';"
     result = None
     try:
         cursor.execute(sql)
