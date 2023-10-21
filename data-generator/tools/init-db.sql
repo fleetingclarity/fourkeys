@@ -170,7 +170,7 @@ FROM
         SUBSTRING(metadata::text FROM 'root cause: ([[:alnum:]]*)') AS root_cause,
         CASE
             WHEN source LIKE 'github%' THEN metadata#>>'{issue,labels}' LIKE '%name%' AND metadata#>>'{issue,labels}' LIKE '%"name":_"Incident"%'
-            WHEN source LIKE 'gitlab%' THEN metadata#>'{object_attributes,labels}' ? 'title' AND metadata#>>'{object_attributes,labels}' LIKE '%"title":_"Incident"%'
+            WHEN source LIKE 'gitlab%' THEN metadata#>'{object_attributes,labels}' @> '[{"title":"Incident"}]'
             WHEN source LIKE 'pagerduty%' THEN TRUE
         END AS bug
     FROM events_raw
