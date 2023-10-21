@@ -4,6 +4,7 @@
 import pika
 import pika.exceptions
 import time
+import shared
 
 
 class RabbitMQConnector:
@@ -70,3 +71,5 @@ class RabbitMQConnector:
             traceback.print_exc()
             self.channel.stop_consuming()
             self.connection.close()
+        finally:
+            shared.shutdown()
