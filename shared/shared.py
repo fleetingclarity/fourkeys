@@ -129,7 +129,7 @@ def insert_row_into_events_enriched(event):
             try:
                 cursor = connection.cursor()
                 cursor.executemany(insert_query, row_to_insert)
-
+                connection.commit()
             except Error as e:
                 entry = {
                     "severity": "WARNING",
