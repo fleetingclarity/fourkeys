@@ -47,8 +47,8 @@ FROM events_raw raw
 JOIN events_enriched enr ON raw.signature = enr.events_raw_signature;
 -- end view events
 
-CREATE OR REPLACE VIEW deployments AS
-with deploys_cloudbuild_github_gitlab as (
+CREATE OR REPLACE VIEW deploys AS
+   with deploys_cloudbuild_github_gitlab as (
     select
         source,
         id as deploy_id,
@@ -100,15 +100,17 @@ deploys_circleci as (
         array[]::text[] as additional_commits
     from events_raw
     where source = 'circleci' and event_type = 'workflow-completed' and metadata#>>'{workflow, name}' like '%deploy%' and metadata#>>'{workflow, status}' = 'success'
-),
-deploys as (
-    select * from deploys_cloudbuild_github_gitlab
+)
+select * from deploys_cloudbuild_github_gitlab
     union all
     select * from deploys_tekton
     union all
     select * from deploys_circleci
-),
-changes_raw as (
+order by time_created desc;
+-- end view deploys
+
+CREATE OR REPLACE VIEW deployments AS
+with changes_raw as (
     select
         id,
         metadata as change_metadata
