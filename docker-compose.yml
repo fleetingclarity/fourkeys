@@ -7,7 +7,7 @@ services:
     hostname: rmq
     container_name: fk-rabbit-server
     ports:
-      # management server
+      # management server, u=guest, p=guest
       - "15672:15672"
       # ?
       - "5672:5672"
